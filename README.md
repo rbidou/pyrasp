@@ -247,7 +247,7 @@ Configuration is set from a JSON file.
 
 ### Syslog Logs
 ```
-"<event_time>" - "<application_name>" - "<event_type>" - "<source_ip>" - "<country>" - "<location>:<payload>"
+[<event_time>] "<application_name>" - "<event_type>" - "<source_ip>" - "<country>" - "<location>:<payload>"
 ```
 
 ### Attack Types
@@ -267,6 +267,7 @@ Possible values for attack types are:
 ### Payload Locations
 | Value | Location |
 | - | - |
+| `source_ip` | Source IP |
 | `request` | Request path or method |
 | `path` | Request path |
 | `host` | "Host" header |

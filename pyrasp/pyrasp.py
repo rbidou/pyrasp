@@ -1,4 +1,4 @@
-VERSION = '1.0.0'
+VERSION = '0.1.0'
 
 from pprint import pprint
 from flask import request
@@ -23,14 +23,14 @@ from multiprocessing import Process, Queue
 
 # DATA GLOBALS
 try:
-    from .pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION
-    from .pyrasp_data import PCB_SERVER, PCB_PROTOCOL
-    from .pyrasp_data import DEFAULT_CONFIG
-    from .pyrasp_data import ATTACKS, ATTACKS_CHECKS
-    from .pyrasp_data import SQL_INJECTIONS_POINTS, SQL_INJECTIONS_SIGNATURES, SQL_INJECTIONS_VECTORS
-    from .pyrasp_data import XSS_VECTORS
-    from .pyrasp_data import COMMAND_INJECTIONS_VECTORS
-    from .pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS
+    from pyrasp.pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION
+    from pyrasp.pyrasp_data import PCB_SERVER, PCB_PROTOCOL
+    from pyrasp.pyrasp_data import DEFAULT_CONFIG
+    from pyrasp.pyrasp_data import ATTACKS, ATTACKS_CHECKS
+    from pyrasp.pyrasp_data import SQL_INJECTIONS_POINTS, SQL_INJECTIONS_SIGNATURES, SQL_INJECTIONS_VECTORS
+    from pyrasp.pyrasp_data import XSS_VECTORS
+    from pyrasp.pyrasp_data import COMMAND_INJECTIONS_VECTORS
+    from pyrasp.pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS
 except:
     from pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION
     from pyrasp_data import PCB_SERVER, PCB_PROTOCOL
@@ -201,7 +201,7 @@ class FlaskRASP():
     ####################################################
 
 
-    def __init__(self, app, app_name = None, hosts = [], conf = None, key = None, verbose_level = None, dev = False):
+    def __init__(self, app, app_name = None, hosts = [], conf = None, key = None, verbose_level = 10, dev = False):
 
         # Set init verbosity
         if not verbose_level == None:
@@ -213,7 +213,8 @@ class FlaskRASP():
             PCB_SERVER = '127.0.0.1:8080'
 
         # Start display
-        self.print_screen('[+] Starting RASP', init=True)
+        self.print_screen(f'### PyRASP v{VERSION} ##########', init=True, new_line_up=True)
+        self.print_screen('[+] Starting PyRASP', init=True, new_line_up=False)
 
         #
         # Check updates
@@ -227,8 +228,8 @@ class FlaskRASP():
 
         # Load default configuration
         if conf == None and key == None:
-            self.print_screen('[!] No configuration provided.', init=True, new_line_up = True)
-            self.print_screen('[+] Loading default configuration', init=True, new_line_up = True)
+            self.print_screen('[!] No configuration provided.', init=True, new_line_up = False)
+            self.print_screen('[+] Loading default configuration', init=True, new_line_up = False)
             self.load_config(DEFAULT_CONFIG)
 
         # Load configuration file
@@ -291,7 +292,7 @@ class FlaskRASP():
                 xss_model_loaded = True
 
         if not xss_model_loaded:
-            self.print_screen('[!] XSS model not loaded', init=True, new_line_up = False)
+            self.print_screen('[!] XSS model not loaded', init=False, new_line_up = False)
         else:
             self.print_screen('[+] XSS model loaded', init=True, new_line_up = False)
 
@@ -305,6 +306,9 @@ class FlaskRASP():
 
             # Start beacon
             self.start_beacon(key)
+
+        self.print_screen('[+] PyRASP succesfully started', init=True)
+        self.print_screen('############################', init=True, new_line_down=True)
 
     def __del__(self):
 
@@ -320,8 +324,6 @@ class FlaskRASP():
 
             try:
                 pass
-                #self.LOG_QUEUE.put('--STOP--')
-                #self.LOG_WORKER.terminate()
             except Exception as e:
                 self.print_screen('[!] Error terminating logging process', init=True, new_line_up = False)
 
@@ -450,7 +452,7 @@ class FlaskRASP():
 
     def start_logging(self):
 
-        self.print_screen('[+] Starting logging process', init=True, new_line_up = True)
+        self.print_screen('[+] Starting logging process', init=True, new_line_up = False)
         self.LOG_QUEUE = Queue()
         self.LOG_WORKER = Process(target=log_worker, args=(self.LOG_QUEUE, self.LOG_SERVER, self.LOG_PORT, self.LOG_FORMAT, self.LOG_PROTOCOL ))
         self.LOG_WORKER.start()
@@ -472,7 +474,7 @@ class FlaskRASP():
 
         result = False
 
-        self.print_screen('[+] Loading configuration from cloud', init = True, new_line_up = True)
+        self.print_screen('[+] Loading configuration from cloud', init = True, new_line_up = False)
 
         config_url = f'{PCB_PROTOCOL}://{PCB_SERVER}/rasp/connect'
         data = { 'key': key, 'version': VERSION }
@@ -530,21 +532,23 @@ class FlaskRASP():
             
     def load_file_config(self, conf_file):
 
-        self.print_screen(f'[+] Loading configuration from {conf_file}', init = True, new_line_up = True)
+        self.print_screen(f'[+] Loading configuration from {conf_file}', init = True, new_line_up = False)
 
         try:
             with open(conf_file) as f:
                 config = json.load(f)
         except Exception as e:
-            self.print_screen(f'[!] Error reading {conf_file}: {str(e)}', init = True, new_line_up = True)
+            self.print_screen(f'[!] Error reading {conf_file}: {str(e)}', init = True, new_line_up = False)
         else:
             self.load_config(config)
    
     def load_config(self, config):
 
         for key in config:
-            self.print_screen(f'[+] {key} => {config[key]}', 100, init=True)
             setattr(self, key, config[key])
+        
+        for key in config:
+            self.print_screen(f'[+] {key} => {config[key]}', 100, init=False)        
 
         return True
 
@@ -692,7 +696,12 @@ class FlaskRASP():
 
         self.blacklist_ip(source_ip, timestamp, attack_check)
 
-        self.print_screen(f'[!] {ATTACKS[attack_id]}: {attack["details"]["location"]} -> {attack["details"]["payload"]}')
+        
+        try:
+            self.print_screen(f'[!] {ATTACKS[attack_id]}: {attack["details"]["location"]} -> {attack["details"]["payload"]}')
+        except:
+            self.print_screen(f'[!] Attack - No details')
+        
 
         if self.LOG_ENABLED:
             self.log_security_event(ATTACKS[attack_id], request, None, attack_details)
@@ -927,7 +936,7 @@ class FlaskRASP():
                 'type': ATTACK_XSS,
                 'details': {
                     'location': vector_type,
-                    'details': injection
+                    'payload': injection
                 }
             }
 
@@ -1054,7 +1063,10 @@ class FlaskRASP():
         if result:
             attack = {
                 'type': ATTACK_BLACKLIST,
-                'details': {}
+                'details': {
+                    'location': 'source_ip',
+                    'payload': source_ip
+                }
             }
         
         return attack
