@@ -170,7 +170,7 @@ def handle_kb_interrupt(sig, frame):
     print('[!] Stopping RASP')
     exit()
     
-class RASP():
+class FlaskRASP():
 
     ####################################################
     # GLOBAL VARIABLES
@@ -640,7 +640,7 @@ class RASP():
                         if self.SECURITY_CHECKS.get('sqli'):
                             attack = self.check_sqli(inject_vectors)
 
-                # Send attack_id in status code for handling by @after_request
+                # Send attack status in status code for handling by @after_request
                 if not attack == None:
                     self.handle_attack(attack, host, request_path, source_ip, timestamp)
                     return self.GTFO_MSG, 1
@@ -1072,6 +1072,8 @@ class RASP():
     ####################################################
     # DECOY
     ####################################################
+
+    # Unused for now
 
     def decoy(self, request):
 

@@ -9,8 +9,8 @@ XSS_MODEL_VERSION = '1.0.0'
 # CLOUD SERVER
 #
 
-PCB_SERVER = 'rasp.paracyberbellum.io:8080'
-PCB_PROTOCOL = 'http'
+PCB_SERVER = None
+PCB_PROTOCOL = None
 
 #
 # DETECTION
@@ -79,11 +79,11 @@ COMMAND_INJECTIONS_VECTORS = [ 'qs_values', 'post_values', 'json_values' ]
 #
 
 DEFAULT_CONFIG = {
-    "HOSTS" : ["127.0.0.1:8080"],
+    "HOSTS" : [""],
     "APP_NAME" : "Web Server",
-    "GTFO_MSG" : '<html><body><div style="display: flex; width:50%; min-width:350px; padding-top:10vh; margin: auto; font-size: x-large">I know you are trying to do something. <br>You just can\'t imagine how painful it is, for me as well as for you. <br>I think you should just stop trying to do something</div></body></html>',
+    "GTFO_MSG" : "Blocked",
 
-    "VERBOSE" : 0,
+    "VERBOSE" : 10,
     "DECODE_B64" : True,
 
     "SECURITY_CHECKS" : {
@@ -91,7 +91,7 @@ DEFAULT_CONFIG = {
         "path": 2,
         "headers": 1,
         "flood": 2,
-        "spoofing": 2,
+        "spoofing": 0,
         "decoy": 2,
         "format": 2,
         "sqli": 2,
@@ -116,9 +116,7 @@ DEFAULT_CONFIG = {
     "BLACKLIST_DELAY" : 3600,
     "BLACKLIST_OVERRIDE" : False,
 
-    
     "DECOY_ROUTES" : [ 
-        "/admin", "/login", "/logs", "/version",    
         "/cgi-bin/",                                
         "/remote/",                                 
         "/.env",                                    
@@ -131,7 +129,7 @@ DEFAULT_CONFIG = {
     "XSS_PROBA" : 0.80,
     "MIN_XSS_LEN": 16,
 
-    "LOG_ENABLED": True,
+    "LOG_ENABLED": False,
     "LOG_FORMAT": "Syslog",
     "LOG_SERVER" : "127.0.0.1",    
     "LOG_PORT": 514,
