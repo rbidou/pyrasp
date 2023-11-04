@@ -2,7 +2,7 @@
 ## Overview
 `pyrasp` is a Runtime Application Self Protection package for Python-based Web Servers. It protects against the main attacks web applications are exposed to from within the application. 
 
-One specificity of `pyrasp` relies on the fact that it does not use signatures (except the specific case of SQL Injection). Instead it will leverage decoys, thresholds, system and application internals, machine learning and grammatical analysis.
+One specificity of `pyrasp` relies on the fact that it does not use signatures (except very few specific cases of SQL Injection). Instead it will leverage decoys, thresholds, system and application internals, machine learning and grammatical analysis.
 
 > Version 0.1.x only supports Flask
 
