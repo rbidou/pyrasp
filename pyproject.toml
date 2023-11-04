@@ -1,6 +1,6 @@
 [project]
 name = "pyrasp"
-version = "1.0.15"
+version = "0.1.0"
 authors = [
     { name = "Renaud Bidou", email = "renaud@paracyberbellum.io" }
 ]
