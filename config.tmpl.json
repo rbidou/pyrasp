@@ -32,6 +32,8 @@
     "BLACKLIST_DELAY" : 3600,
     "BLACKLIST_OVERRIDE" : false,
 
+    "FORBIDDEN_HEADERS": [],
+
     
     "DECOY_ROUTES" : [ 
         "/admin", "/login", "/logs", "/version",    
