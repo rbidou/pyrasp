@@ -78,8 +78,6 @@ Configuration is set from a JSON file.
 
     "IGNORE_PATHS" : ["^/css","^/js","^/img"],
 
-    "FORBIDDEN_HEADERS": [ ],
-
     "BRUTE_AND_FLOOD_PATHS" : ["^/"],
     "FLOOD_DELAY" : 60,
     "FLOOD_RATIO" : 50,
@@ -122,7 +120,6 @@ Configuration is set from a JSON file.
 | `SECURITY_CHECKS` | integer |  0, 1, 2, 3 | Security modules status - *see "Specific Parameters Values" section below*  |
 | `WHITELIST` | list of strings | any | Whitelisted source IP addresses |
 | `IGNORE_PATHS` | list of regexp | any | Paths to which requests will entirely bypass security checks including blacklist |
-| `FORBIDDEN_FEADERS` | list of strings | any | List of headers that will be blocked if present in the request |
 | `BRUTE_AND_FLOOD_PATH` | list of regexp | any | Paths for which flood and brute force threshold will be enabled |
 | `FLOOD_DELAY` | integer | any | Sliding time window (in second) against which request threshold is calculated |
 | `FLOOD_RATIO` | integer | any | Requests threshold |

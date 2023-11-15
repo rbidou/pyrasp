@@ -1,5 +1,5 @@
 {
-    "HOSTS" : ["127.0.0.1:8000"],
+    "HOSTS" : ["127.0.0.1"],
     "APP_NAME" : "Web Server",
     "GTFO_MSG" : "I know you are trying to do something. You just can't imagine how painful it is, for me as well as for you. I think you should just stop trying to do something",
 

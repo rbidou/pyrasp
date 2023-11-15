@@ -1,4 +1,4 @@
-VERSION = '0.1.0'
+VERSION = '0.1.2'
 
 from pprint import pprint
 from flask import request
@@ -694,7 +694,8 @@ class FlaskRASP():
         attack_details = attack.get('details') or {}
         attack_check = ATTACKS_CHECKS[attack_id]
 
-        self.blacklist_ip(source_ip, timestamp, attack_check)
+        if not self.BLACKLIST_OVERRIDE:
+            self.blacklist_ip(source_ip, timestamp, attack_check)
 
         
         try:
@@ -1076,8 +1077,7 @@ class FlaskRASP():
 
         result = True
 
-        if self.SECURITY_CHECKS[attack_type] == 2 and not self.BLACKLIST_OVERRIDE:
-            self.BLACKLIST[source_ip] = timestamp
+        self.BLACKLIST[source_ip] = timestamp
 
         return result
     
