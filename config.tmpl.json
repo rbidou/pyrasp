@@ -10,7 +10,7 @@
         "path": 2,
         "headers": 2,
         "flood": 2,
-        "spoofing": 2,
+        "spoofing": 1,
         "decoy": 2,
         "format": 2,
         "sqli": 2,

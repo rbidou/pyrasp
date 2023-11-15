@@ -17,7 +17,6 @@ from threading import Thread
 import signal
 import pkg_resources
 
-
 # MULTIPROCESSING
 from multiprocessing import Process, Queue
 

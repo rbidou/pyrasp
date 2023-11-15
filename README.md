@@ -18,7 +18,6 @@ Security modules, technology, and operations are provided in the table below.
 | XSS | Machine Learning | Detects and XSS attempts |
 | Command Injection | System Internals | Prevents command injections attempts |
 
-
 ## Install
 ### From PyPi (Recommended)
 ```
@@ -166,7 +165,6 @@ Configuration is set from a JSON file.
     "DECODE_B64" : true,
 
     "SECURITY_CHECKS" : {
-        "blacklist": 2,
         "path": 2,
         "headers": 1,
         "flood": 2,
@@ -176,8 +174,7 @@ Configuration is set from a JSON file.
         "sqli": 2,
         "xss": 2,
         "hpp": 2,
-        "command": 2,
-        "method": 2
+        "command": 2
     },    
 
     "WHITELIST": [],
@@ -277,7 +274,7 @@ Possible values for attack types are:
 | `user_agent` | "User-Agent" header |
 | `referer` | "Referer" header |
 | `qs_variables` | Query String variable name |
-| `qs_values` | Qyery Strubg value |
+| `qs_values` | Qyery String value |
 | `post_variables` | Posted data variable name |
 | `post_values` | Posted data value |
 | `json_keys` | JSON key name |

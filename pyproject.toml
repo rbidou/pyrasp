@@ -18,7 +18,6 @@ dependencies = [
   "sqlparse", 
   "scikit-learn==1.3.0",
   "requests"
-
 ]
 
 [project.urls]
