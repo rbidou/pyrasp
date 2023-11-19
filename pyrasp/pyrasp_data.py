@@ -2,15 +2,16 @@
 # VERSION
 #
 
-DATA_VERSION = '1.0.0'
-XSS_MODEL_VERSION = '1.0.0'
+DATA_VERSION = '1.1.0'
+XSS_MODEL_VERSION = '1.1.0'
+SQLI_MODEL_VERSION = '1.0.0'
 
 # 
 # CLOUD SERVER
 #
 
-PCB_SERVER = None
-PCB_PROTOCOL = None
+PCB_SERVER = 'rasp.paracyberbellum.io:8080'
+PCB_PROTOCOL = 'http'
 
 #
 # DETECTION
@@ -79,17 +80,16 @@ COMMAND_INJECTIONS_VECTORS = [ 'qs_values', 'post_values', 'json_values' ]
 #
 
 DEFAULT_CONFIG = {
-    "HOSTS" : [""],
+    "HOSTS" : [],
     "APP_NAME" : "Web Server",
-    "GTFO_MSG" : "Blocked",
+    "GTFO_MSG" : 'Blocked',
 
-    "VERBOSE" : 10,
+    "VERBOSE" : 0,
     "DECODE_B64" : True,
 
     "SECURITY_CHECKS" : {
-        "blacklist": 2,
-        "path": 2,
-        "headers": 1,
+        "path": 1,
+        "headers": 0,
         "flood": 2,
         "spoofing": 0,
         "decoy": 2,
@@ -98,12 +98,12 @@ DEFAULT_CONFIG = {
         "xss": 2,
         "hpp": 2,
         "command": 2,
-        "method": 2
+        "method": 0
     },    
 
     "WHITELIST": [],
 
-    "IGNORE_PATHS" : ["^/css","^/js","^/img","^/favicon.ico$","^/robots.txt$","^/sitemap\.(txt|xml)$"],
+    "IGNORE_PATHS" : ["^/favicon.ico$","^/robots.txt$","^/sitemap\.(txt|xml)$"],
 
     "FORBIDDEN_HEADERS": [ ],
 
@@ -116,7 +116,9 @@ DEFAULT_CONFIG = {
     "BLACKLIST_DELAY" : 3600,
     "BLACKLIST_OVERRIDE" : False,
 
+    
     "DECOY_ROUTES" : [ 
+        "/admin", "/login", "/logs", "/version",    
         "/cgi-bin/",                                
         "/remote/",                                 
         "/.env",                                    
@@ -126,8 +128,11 @@ DEFAULT_CONFIG = {
         "/.aws/ "                                 
     ],
 
-    "XSS_PROBA" : 0.80,
+    "XSS_PROBA" : 0.60,
     "MIN_XSS_LEN": 16,
+
+    "SQLI_PROBA" : 0.725,
+    "MIN_SQLI_LEN": 8,
 
     "LOG_ENABLED": False,
     "LOG_FORMAT": "Syslog",

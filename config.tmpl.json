@@ -46,8 +46,11 @@
         "/.aws/ "                                 
     ],
 
-    "XSS_PROBA" : 0.80,
+    "XSS_PROBA" : 0.60,
     "MIN_XSS_LEN": 16,
+
+    "SQLI_PROBA" : 0.725,
+    "MIN_SQLI_LEN": 8,
 
     "LOG_ENABLED": false,
     "LOG_FORMAT": "Syslog",

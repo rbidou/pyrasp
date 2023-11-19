@@ -1,7 +1,6 @@
-VERSION = '0.1.2'
+VERSION = '0.2.0'
 
 from pprint import pprint
-from flask import request
 import time
 import re
 import sqlparse
@@ -16,13 +15,27 @@ from datetime import datetime
 from threading import Thread
 import signal
 import pkg_resources
+import sys
+
+# Flask
+try:
+    from flask import request
+except:
+    pass
+
+# FastAPI
+try:
+    from fastapi import Request, Response
+    from starlette.routing import Match
+except:
+    pass
 
 # MULTIPROCESSING
 from multiprocessing import Process, Queue
 
 # DATA GLOBALS
 try:
-    from pyrasp.pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION
+    from pyrasp.pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION
     from pyrasp.pyrasp_data import PCB_SERVER, PCB_PROTOCOL
     from pyrasp.pyrasp_data import DEFAULT_CONFIG
     from pyrasp.pyrasp_data import ATTACKS, ATTACKS_CHECKS
@@ -31,7 +44,7 @@ try:
     from pyrasp.pyrasp_data import COMMAND_INJECTIONS_VECTORS
     from pyrasp.pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS
 except:
-    from pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION
+    from pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION
     from pyrasp_data import PCB_SERVER, PCB_PROTOCOL
     from pyrasp_data import DEFAULT_CONFIG
     from pyrasp_data import ATTACKS, ATTACKS_CHECKS
@@ -167,9 +180,9 @@ def handle_kb_interrupt(sig, frame):
     global STOP_THREAD
     STOP_THREAD = True
     print('[!] Stopping RASP')
-    exit()
+    sys.exit()
     
-class FlaskRASP():
+class PyRASP():
 
     ####################################################
     # GLOBAL VARIABLES
@@ -195,6 +208,9 @@ class FlaskRASP():
     # Misc
     INIT_VERBOSE = 0
 
+    # Platform
+    PLATFORM = 'Unknown'
+    
     ####################################################
     # CONSTRUCTOR & DESTRUCTOR
     ####################################################
@@ -206,7 +222,8 @@ class FlaskRASP():
         if not verbose_level == None:
             self.INIT_VERBOSE = verbose_level
 
-        # Develompent mode
+
+        # Development mode
         if dev:
             global PCB_SERVER
             PCB_SERVER = '127.0.0.1:8080'
@@ -265,12 +282,14 @@ class FlaskRASP():
             self.HOSTS = hosts
 
         # Register security checks
-        self.set_before_security_checks(app)
-        self.set_after_security_checks(app)
+        self.register_security_checks(app)
 
         # Load XSS ML model
         xss_model_loaded = False
-        xss_model_file = 'xss_model-'+XSS_MODEL_VERSION
+        if not dev:
+            xss_model_file = 'xss_model-'+XSS_MODEL_VERSION
+        else:
+            xss_model_file = 'ml-engines/xss_model-dev'
 
         ## From source
         try:
@@ -294,6 +313,37 @@ class FlaskRASP():
             self.print_screen('[!] XSS model not loaded', init=False, new_line_up = False)
         else:
             self.print_screen('[+] XSS model loaded', init=True, new_line_up = False)
+
+        # Load SQLI ML model
+        sqli_model_loaded = False
+        if not dev:
+            sqli_model_file = 'sqli_model-'+SQLI_MODEL_VERSION
+        else:
+            sqli_model_file = 'ml-engines/sqli_model-dev'
+
+        ## From source
+        try:
+            self.sqli_model = pickle.load(open(sqli_model_file,'rb'))
+        except:
+            pass
+        else:
+            sqli_model_loaded = True
+
+        ## From package
+        if not sqli_model_loaded:
+            try:
+                sqli_model_file = pkg_resources.resource_filename('pyrasp', 'data/'+sqli_model_file)
+                self.sqli_model = pickle.load(open(sqli_model_file,'rb'))
+            except:
+                pass
+            else:
+                sqli_model_loaded = True
+
+        if not sqli_model_loaded:
+            self.print_screen('[!] SQLI model not loaded', init=False, new_line_up = False)
+        else:
+            self.print_screen('[+] SQLI model loaded', init=True, new_line_up = False)
+
 
         # Start logging
         if self.LOG_ENABLED:
@@ -327,6 +377,9 @@ class FlaskRASP():
                 self.print_screen('[!] Error terminating logging process', init=True, new_line_up = False)
 
         return
+    
+    def register_security_checks(self, app):
+        pass
 
     ####################################################
     # BEACON & UPDATES
@@ -442,9 +495,6 @@ class FlaskRASP():
             else:
                 self.print_screen('[=] XSS ML model is up-to-date', init=True)
 
-    def say_hello(self):
-        print('Hello !!!')
-
     ####################################################
     # LOGGING
     ####################################################
@@ -476,7 +526,7 @@ class FlaskRASP():
         self.print_screen('[+] Loading configuration from cloud', init = True, new_line_up = False)
 
         config_url = f'{PCB_PROTOCOL}://{PCB_SERVER}/rasp/connect'
-        data = { 'key': key, 'version': VERSION }
+        data = { 'key': key, 'version': VERSION, 'platform': self.PLATFORM }
 
         error = False
         
@@ -552,138 +602,6 @@ class FlaskRASP():
         return True
 
     ####################################################
-    # SECURITY CHECKS
-    ####################################################
-
-    # Incoming request
-    def set_before_security_checks(self, app):
-
-        @app.before_request
-        def before_request_callback():
-
-            (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
-            (attack_location, attack_payload) = (None, None)
-
-            # Check if source is whitelisted
-            whitelist = False
-
-            for whitelist_source in self.WHITELIST:
-                if source_ip.startswith(whitelist_source):
-                    whitelist = True
-
-            # Not whitelisted, going through security tests
-            if not whitelist:
-
-                ignore = False
-                attack_id = None
-                attack = None
-
-                ### Rules to be applied to all requests
-
-                # Check if source IP is already blacklisted
-                if not self.BLACKLIST_OVERRIDE:
-                    attack = self.check_blacklist(source_ip, timestamp)
-                
-                # Check host
-                if attack == None:
-                    if self.SECURITY_CHECKS.get('spoofing') and len(self.HOSTS) > 0:
-                        attack = self.check_host(host)
-
-                # Decoy
-                if attack == None:
-                    if self.SECURITY_CHECKS.get('decoy'):
-                        attack = self.check_decoy(request_path)
-                    
-                # Check if routing rule exists
-                if attack == None:
-                    if self.SECURITY_CHECKS.get('path'):
-                        attack = self.check_rule(request, request_method, request_path)
-
-                # Check if path is to be ignored
-                if attack == None:
-                    if self.check_ignore_path(request_path):
-                        ignore = True
-                else:
-                    ignore = True
-
-                ### Rules to be applied to NOT ignored path
-                if not ignore:
-
-                    # Check brute force and flood on vulnerable paths
-                    if attack_id == None:
-                        if self.SECURITY_CHECKS.get('flood'):
-                            attack = self.flood_and_brute_check(request_path, source_ip, timestamp)
-                                
-                    # Check HTTP Parameter Pollution
-                    if attack == None:
-                        if self.SECURITY_CHECKS.get('hpp'):
-                            attack = self.check_hpp(request)
-
-                    # Get injectable params
-                    if attack == None:
-                        inject_vectors = self.get_vectors(request)
-
-                    # Check headers
-                    if attack == None:
-                        if self.SECURITY_CHECKS.get('headers'):
-                            attack = self.check_headers(inject_vectors)
-
-                    # Check command injection
-                    if attack == None:
-                        if self.SECURITY_CHECKS.get('command'):
-                            attack = self.check_cmdi(inject_vectors)
-
-                    # Check XSS
-                    if attack == None:
-                        if self.SECURITY_CHECKS.get('xss'):
-                            attack = self.check_xss(inject_vectors)
-
-                    # Check SQL injections
-                    if attack == None:
-                        if self.SECURITY_CHECKS.get('sqli'):
-                            attack = self.check_sqli(inject_vectors)
-
-                # Send attack status in status code for handling by @after_request
-                if not attack == None:
-                    self.handle_attack(attack, host, request_path, source_ip, timestamp)
-                    return self.GTFO_MSG, 1
-           
-    # Outgoing responses
-    def set_after_security_checks(self, app):
-        @app.after_request
-        def after_request_callback(response):
-
-            (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
-
-            ignore = False
-            response_attack = None
-            request_attack = False
-
-            # Get attack from @before_request checks
-            if response.status_code == 1:
-                request_attack = True
-                response.status_code = 403
-
-            # Check if response is error
-            if response.status_code < 400:
-                ignore = True
-
-            # Check brute force and flood
-            if not ignore:
-            
-                if self.SECURITY_CHECKS.get('flood'):
-                    response_attack = self.flood_and_brute_check(request_path, source_ip, timestamp, error=True)
-                        
-            if response_attack and not request_attack == None:
-                self.handle_attack(response_attack, host, request_path, source_ip, timestamp)
-
-            if response_attack or request_attack:
-                response.status_code = 403
-                response.content = self.GTFO_MSG
-
-            return response
-
-    ####################################################
     # ATTACK HANDLING
     ####################################################
 
@@ -707,27 +625,116 @@ class FlaskRASP():
             self.log_security_event(ATTACKS[attack_id], request, None, attack_details)
 
     ####################################################
-    # SECURITY FUNCTIONS
+    # CHECKS CONTROL
     ####################################################
-        
-    # Check if a rule matches the request
-    def check_rule(self, request, request_method, request_path):
+
+    # Inbound attacks
+    def check_inbound_attacks(self, host, request_method, request_path, source_ip, timestamp, request, inject_vectors = None):
+
+        (attack_location, attack_payload) = (None, None)
+
+        # Check if source is whitelisted
+        whitelist = False
+
+        for whitelist_source in self.WHITELIST:
+            if source_ip.startswith(whitelist_source):
+                whitelist = True
+
+        # Not whitelisted, going through security tests
+        if not whitelist:
+
+            ignore = False
+            attack_id = None
+            attack = None
+
+            ### Rules to be applied to all requests
+
+            # Check if source IP is already blacklisted
+            if not self.BLACKLIST_OVERRIDE:
+                attack = self.check_blacklist(source_ip, timestamp)
+            
+            # Check host
+            if attack == None:
+                if self.SECURITY_CHECKS.get('spoofing') and len(self.HOSTS) > 0:
+                    attack = self.check_host(host)
+
+            # Decoy
+            if attack == None:
+                if self.SECURITY_CHECKS.get('decoy'):
+                    attack = self.check_decoy(request_path)
+                
+            # Check if routing rule exists
+            if attack == None:
+                if self.SECURITY_CHECKS.get('path'):
+                    attack = self.check_route(request, request_method, request_path)
+
+            # Check if path is to be ignored
+            if attack == None:
+                if self.check_ignore_path(request_path):
+                    ignore = True
+            else:
+                ignore = True
+
+            ### Rules to be applied to NOT ignored path
+            if not ignore:
+
+                # Check brute force and flood on vulnerable paths
+                if attack_id == None:
+                    if self.SECURITY_CHECKS.get('flood'):
+                        attack = self.flood_and_brute_check(request_path, source_ip, timestamp)
+                            
+                # Check HTTP Parameter Pollution
+                if attack == None:
+                    if self.SECURITY_CHECKS.get('hpp'):
+                        attack = self.check_hpp(request)
+
+                # Get injectable params
+                if attack == None and inject_vectors == None:
+                    inject_vectors = self.get_vectors(request)
+
+                # Check headers
+                if attack == None:
+                    if self.SECURITY_CHECKS.get('headers'):
+                        attack = self.check_headers(inject_vectors)
+
+                # Check command injection
+                if attack == None:
+                    if self.SECURITY_CHECKS.get('command'):
+                        attack = self.check_cmdi(inject_vectors)
+
+                # Check XSS
+                if attack == None:
+                    if self.SECURITY_CHECKS.get('xss'):
+                        attack = self.check_xss(inject_vectors)
+
+                # Check SQL injections
+                if attack == None:
+                    if self.SECURITY_CHECKS.get('sqli'):
+                        attack = self.check_sqli(inject_vectors)
+
+        return attack
+
+    # Outbound attacks
+    def check_outbound_attacks(self, host, request_method, request_path, source_ip, timestamp, error):
 
         attack = None
-        rule_exists = False
 
-        rule = request.url_rule
-        if rule:
-            rule_exists = True
+        # Check flood errors
+        if error:
 
-        if not rule_exists:
-            attack = {
-                'type': ATTACK_PATH,
-                'details': {
-                    'location': 'request',
-                    'payload': request_method + ' ' + request_path
-                }
-            }
+            if self.SECURITY_CHECKS.get('flood'):
+                attack = self.flood_and_brute_check(request_path, source_ip, timestamp, error=True)
+
+        return attack
+
+    ####################################################
+    # SECURITY FUNCTIONS
+    ####################################################
+
+    # Check if a rule matches the request
+    def check_route(self, request, request_method, request_path):
+
+        attack = None
 
         return attack
     
@@ -835,17 +842,22 @@ class FlaskRASP():
                 if not re.search('[ +\'"(]', injection):
                     continue
 
+                # Identify only alphanum and space
+                if re.search('^[a-zA-Z0-9 ]+$', injection) and not re.search('\snull\s', injection):
+                    continue
+
                 # Test signatures
+                '''
                 for signature in SQL_INJECTIONS_SIGNATURES:
                     if re.search(signature, injection, re.IGNORECASE):
                         sql_injection = True
                         break
-                
+                '''
+
                 # Select proper injected request format
                 quotes = ''
                 injections_point = SQL_INJECTIONS_POINTS
-                
-                
+                              
                 for c in injection:
                     if c == '"':
                         quotes = '"'
@@ -890,7 +902,14 @@ class FlaskRASP():
                             
                     if sql_injection:
                         break
-                            
+
+                # Machine Learning check
+                if not sql_injection:
+                    sqli_probability = self.sqli_model.predict_proba([injection.lower()])[0]
+                    if sqli_probability[1] > self.SQLI_PROBA:
+                        sql_injection = True
+                        break
+
                 if sql_injection:
                     break
 
@@ -923,6 +942,10 @@ class FlaskRASP():
                 # Requires minimum_length
                 if len(injection) > self.MIN_XSS_LEN:
 
+                    if injection.count('[') > 8 and injection.count(']') > 8:
+                        xss = True
+                        break
+
                     xss_probability = self.xss_model.predict_proba([injection.lower()])[0]
                     if xss_probability[1] > self.XSS_PROBA:
                         xss = True
@@ -945,35 +968,7 @@ class FlaskRASP():
     # Check HPP
     def check_hpp(self, request):
 
-        hpp = False
-        hpp_param = None
         attack = None
-
-        params = list(request.args.lists()) + list(request.form.lists())
-
-        # Same param in same location (QS or body data)
-        for param in params:
-            if len(param[1]) > 1:
-                hpp = True
-                hpp_param = param
-                break
-        
-        # Same param in pultiple locations
-        if not hpp:
-            wide_params = [ i[0] for i in params]
-            if not len(wide_params) == len(set(wide_params)):
-                hpp = True
-                hpp_param = param
-
-        if hpp:
-            attack = {
-                'type': ATTACK_HPP,
-                'details': {
-                    'location': 'param',
-                    'payload': hpp_param[0]
-                }
-
-            }
 
         return attack
 
@@ -1096,6 +1091,233 @@ class FlaskRASP():
     
     # Get request params
     def get_params(self, request):
+        pass
+    
+    # Get request injection vectors
+    def get_vectors(self, request):
+
+        vectors = {
+            'path': [],
+            'headers_names': [],
+            'headers_values': [],
+            'cookies': [],
+            'user_agent': '',
+            'referer': '',
+            'qs_variables': [],
+            'qs_values': [],
+            'post_variables': [],
+            'post_values': [],
+            'json_keys': [],
+            'json_values': [],
+            
+        }
+
+        return vectors
+
+    # Check if path is to be ignored
+    def check_ignore_path(self, request_path):
+
+        result = False
+
+        # Check if path is to be ignored
+        for ignore_pattern in self.IGNORE_PATHS:
+            if re.search(ignore_pattern, request_path):
+                result = True
+                break
+
+        return result
+
+    # Get structure keys and variables
+    def analyze_json(self, structure):
+
+        keys = []
+        values = []
+
+        if type(structure) is list:
+            for el in structure:
+                if any( [ type(el) is list, type(el) is dict ]):
+                    (new_keys, new_values) = self.analyze_json(el)
+                    keys.extend(new_keys)
+                    values.extend(new_values)
+                else:
+                    values.append(str(el))
+            return(keys, values)
+        elif type(structure) is dict:
+            for new_key in structure:
+                keys.extend(new_key)
+                el = structure[new_key]
+                if any( [ type(el) is list, type(el) is dict ]):
+                    (new_keys, new_values) = self.analyze_json(el)
+                    keys.extend(new_keys)
+                    values.extend(new_values)
+                else:
+                    values.append(str(el))
+            return(keys, values)
+            
+        return (keys, values)
+
+    # Identifies and decode b64 values 
+    def get_b64_values(self, param_value):
+
+        b64_values = []
+
+        values = re.findall('(?:[A-Za-z0-9+/]{4})+(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?', param_value)
+
+
+
+        for value in values:
+            try:
+                b64_value_bytes = base64.b64decode(value)
+                b64_value = b64_value_bytes.decode()
+            except:
+                pass
+            else:
+                b64_values.append(b64_value)
+
+        return b64_values
+            
+    # Display info
+    def print_screen(self, text, level = 10, init = False, new_line_up = False, new_line_down = False):
+
+        display = any([
+            init and self.INIT_VERBOSE >= level,
+            not init and self.VERBOSE >= level
+        ])
+            
+        if display:
+            if new_line_up:
+                print()
+            print(text)
+            if new_line_down:
+                print()
+
+class FlaskRASP(PyRASP):
+
+    def __init__(self, app, app_name=None, hosts=[], conf=None, key=None, verbose_level=10, dev=False):
+        self.PLATFORM = 'Flask'
+        super().__init__(app, app_name, hosts, conf, key, verbose_level, dev)
+        
+    def register_security_checks(self, app):
+        self.set_before_security_checks(app)
+        self.set_after_security_checks(app)
+
+    ####################################################
+    # SECURITY CHECKS
+    ####################################################
+
+    # Incoming request
+    def set_before_security_checks(self, app):
+
+        @app.before_request
+        def before_request_callback():
+
+            (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
+            
+            attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request)
+
+            # Send attack status in status code for handling by @after_request
+            if not attack == None:
+                self.handle_attack(attack, host, request_path, source_ip, timestamp)
+                return self.GTFO_MSG, 1
+           
+    # Outgoing responses
+    def set_after_security_checks(self, app):
+        @app.after_request
+        def after_request_callback(response):
+
+            (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
+
+            error = True
+            response_attack = None
+            request_attack = False
+
+            # Get attack from @before_request checks
+            if response.status_code == 1:
+                request_attack = True
+                response.status_code = 403
+
+            # Check if response is error
+            if response.status_code >= 400:
+                error = True
+
+            # Check brute force and flood
+            response_attack = self.check_outbound_attacks(host, request_method, request_path, source_ip, timestamp, error)
+                        
+            if response_attack and not request_attack == None:
+                self.handle_attack(response_attack, host, request_path, source_ip, timestamp)
+
+            if response_attack or request_attack:
+                response.status_code = 403
+                response.content = self.GTFO_MSG
+
+            return response
+
+    ####################################################
+    # SECURITY FUNCTIONS
+    ####################################################
+
+    # Check if a route matches the request
+    def check_route(self, request, request_method, request_path):
+
+        attack = None
+        route_exists = False
+
+        route = request.url_rule
+        if route:
+            route_exists = True
+
+        if not route_exists:
+            attack = {
+                'type': ATTACK_PATH,
+                'details': {
+                    'location': 'request',
+                    'payload': request_method + ' ' + request_path
+                }
+            }
+
+        return attack
+
+    # Check HPP
+    def check_hpp(self, request):
+
+        hpp = False
+        hpp_param = None
+        attack = None
+
+        params = list(request.args.lists()) + list(request.form.lists())
+
+        # Same param in same location (QS or body data)
+        for param in params:
+            if len(param[1]) > 1:
+                hpp = True
+                hpp_param = param
+                break
+        
+        # Same param in pultiple locations
+        if not hpp:
+            wide_params = [ i[0] for i in params]
+            if not len(wide_params) == len(set(wide_params)):
+                hpp = True
+                hpp_param = param
+
+        if hpp:
+            attack = {
+                'type': ATTACK_HPP,
+                'details': {
+                    'location': 'param',
+                    'payload': hpp_param[0]
+                }
+
+            }
+
+        return attack
+
+    ####################################################
+    # UTILS
+    ####################################################
+    
+    # Get request params
+    def get_params(self, request):
         request_path = request.path
         request_method = request.method
         source_ip_list = request.environ.get('HTTP_X_FORWARDED_FOR') or request.environ.get('REMOTE_ADDR')
@@ -1188,80 +1410,240 @@ class FlaskRASP():
 
         return vectors
 
-    # Check if path is to be ignored
-    def check_ignore_path(self, request_path):
+class FastApiRASP(PyRASP):
 
-        result = False
+    def __init__(self, app, app_name=None, hosts=[], conf=None, key=None, verbose_level=10, dev=False):
+        self.PLATFORM = 'FastAPI'
 
-        # Check if path is to be ignored
-        for ignore_pattern in self.IGNORE_PATHS:
-            if re.search(ignore_pattern, request_path):
-                result = True
-                break
+        # Register keyboard interrupt when threads are used
+        if key:
+            @app.on_event("startup")
+            async def startup_event():
+                signal.signal(signal.SIGINT, handle_kb_interrupt)
 
-        return result
+        # Init
+        super().__init__(app, app_name, hosts, conf, key, verbose_level, dev)
 
-    # Get structure keys and variables
-    def analyze_json(self, structure):
+    def register_security_checks(self, app):
 
-        keys = []
-        values = []
+        @app.middleware('http')
+        async def security_checks_setup(request: Request, call_next):
 
-        if type(structure) is list:
-            for el in structure:
-                if any( [ type(el) is list, type(el) is dict ]):
-                    (new_keys, new_values) = self.analyze_json(el)
-                    keys.extend(new_keys)
-                    values.extend(new_values)
-                else:
-                    values.append(str(el))
-            return(keys, values)
-        elif type(structure) is dict:
-            for new_key in structure:
-                keys.extend(new_key)
-                el = structure[new_key]
-                if any( [ type(el) is list, type(el) is dict ]):
-                    (new_keys, new_values) = self.analyze_json(el)
-                    keys.extend(new_keys)
-                    values.extend(new_values)
-                else:
-                    values.append(str(el))
-            return(keys, values)
+            inbound_attack = None
+            outbound_attack = None
+
+            # Get Main params
+            (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
+
+            # Get vectors - need to do it here as async
+            vectors = await self.get_vectors(request) 
+
+            # Check inboud attacks
+            inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request, vectors)
+              
+            # Send response
+            response = await call_next(request)
+
+            # Check outbound attacks
+            error = False
+            if inbound_attack:
+                error = True
+            outbound_attack = self.check_outbound_attacks(host, request_method, request_path, source_ip, timestamp, error)
+
+            if outbound_attack:
+                self.handle_attack(outbound_attack, host, request_path, source_ip, timestamp)
+            elif inbound_attack:
+                self.handle_attack(inbound_attack, host, request_path, source_ip, timestamp)
+
+            if inbound_attack or outbound_attack:
+                response = Response(content=self.GTFO_MSG)
+                response.status_code = 403
+
+            return response
+        
+
+    ####################################################
+    # SECURITY CHECKS
+    ####################################################
+
+    # Check if a rule matches the request
+    def check_route(self, request, request_method, request_path):
+
+        attack = None
+        route_exists = False
+
+        for route in request.app.routes:
+            match, _ = route.matches(request.scope)
+            if match == Match.FULL:
+                route_exists = True
+
+        if not route_exists:
+            attack = {
+                'type': ATTACK_PATH,
+                'details': {
+                    'location': 'request',
+                    'payload': request_method + ' ' + request_path
+                }
+            }
+
+        return attack
+
+    # Check HPP
+    def check_hpp(self, request):
+
+        hpp = False
+        hpp_param = None
+        attack = None
+
+        # Not vulnerable to HPP -- Hopefully
             
-        return (keys, values)
+        if hpp:
+            attack = {
+                'type': ATTACK_HPP,
+                'details': {
+                    'location': 'param',
+                    'payload': hpp_param[0]
+                }
 
-    # Identifies and decode b64 values 
-    def get_b64_values(self, param_value):
+            }
 
-        b64_values = []
-
-        values = re.findall('(?:[A-Za-z0-9+/]{4})+(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?', param_value)
+        return attack
 
 
+    ####################################################
+    # UTILS
+    ####################################################
+    
+    # Get request params
+    def get_params(self, request):
+        request_path = request.url.path
+        request_method = request.method
+        source_ip_list = request.headers.get('HTTP_X_FORWARDED_FOR') or request.client.host
+        source_ip = source_ip_list.split(',')[0].strip()
+        timestamp = time.time()
+        host = request.headers.get('Host')
+        return (host, request_method, request_path, source_ip, timestamp)
+    
+    # Get request injection vectors
+    async def get_vectors(self, request):
 
-        for value in values:
+        vectors = {
+            'path': [],
+            'headers_names': [],
+            'headers_values': [],
+            'cookies': [],
+            'user_agent': '',
+            'referer': '',
+            'qs_variables': [],
+            'qs_values': [],
+            'post_variables': [],
+            'post_values': [],
+            'json_keys': [],
+            'json_values': [],
+            
+        }
+
+        # Request path
+        request_path = request.url.path
+        for path_element in request_path.split('/'):
+            if len(path_element):
+                vectors['path'].append(path_element)
+
+        # Params
+        vectors['params'] = []
+
+        # Query strings
+        query_string = {item[0]: item[1] for item in request.query_params.multi_items() }
+        for qs_variable in query_string:
+            qs_value = query_string[qs_variable]
+            vectors['qs_variables'].append(qs_variable)
+            if len(qs_value):
+                vectors['qs_values'].append(qs_value)
+            if self.DECODE_B64:
+                vectors['qs_values'].extend(self.get_b64_values(qs_value))
+
+        ''' Not sure this is worth
+        # Posted data
+        body_data = await request.body()
+        body_data = body_data.decode()
+
+        if len(body_data):
+
+            # Check JSON body
+            is_json = True
             try:
-                b64_value_bytes = base64.b64decode(value)
-                b64_value = b64_value_bytes.decode()
+                json_data = json.loads(body_data)
             except:
-                pass
+                is_json = False
+
+            # Non-JSON data
+            if not is_json:
+
+                # Split posted stuff
+                posted_params = body_data.split('&')
+
+                # Get variable and value for each
+                for posted_param in posted_params:
+
+                    posted_param_parts = posted_param.split('=')
+                    post_variable = posted_param_parts[0].strip()
+
+                    if len(posted_param_parts) > 1:
+                        post_value = ''.join(posted_param_parts[1:])
+                    else:
+                        post_value = ''
+
+                    # Set vectors parameters
+                    vectors['post_variables'].append(post_variable)
+                    if len(post_value):
+                        vectors['post_values'].append(post_value)
+                    if self.DECODE_B64:
+                        vectors['post_values'].extend(self.get_b64_values(post_value))
+
+            # JSON data
             else:
-                b64_values.append(b64_value)
+                (json_keys, json_values) = self.analyze_json(json_data)
+                vectors['json_keys'] = json_keys
+                vectors['json_values'] = json_values
 
-        return b64_values
+        '''
+
+        # Body - Must be JSON
+        try:
+            json_data = await request.json()
+        except:
+            pass
+        else:
+            (json_keys, json_values) = self.analyze_json(json_data)
+            vectors['json_keys'] = json_keys
+            vectors['json_values'] = json_values
+
+        # Headers
+        headers = request.headers
+        for header in headers:
+
+            # Cookies
+            if header.lower() == 'cookie':
+                cookies = headers[header].split(';')
+                for cookie in cookies:
+                    cookie_parts = cookie.split('=')
+                    if len(cookie_parts) == 1:
+                        cookie_value = cookie_parts[0].strip()
+                    else:
+                        cookie_value = cookie_parts[1].strip()
+                    vectors['cookies'].append(cookie_value)
+
+            # User Agent
+            if header.lower() == 'user-agent':
+                vectors['user_agent'] = headers[header]
+
+            # Refererer
+            if header.lower() == 'referer':
+                vectors['referer'] = headers[header]
             
-    # Display info
-    def print_screen(self, text, level = 10, init = False, new_line_up = False, new_line_down = False):
+            # Other headers
+            else:
+                vectors['headers_names'].append(header)
+                vectors['headers_values'].append(headers[header])
 
-        display = any([
-            init and self.INIT_VERBOSE >= level,
-            not init and self.VERBOSE >= level
-        ])
-            
-        if display:
-            if new_line_up:
-                print()
-            print(text)
-            if new_line_down:
-                print()
-
+        return vectors
