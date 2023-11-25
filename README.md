@@ -18,7 +18,7 @@ Security modules, technology, and operations are provided in the table below.
 | HTTP Parameter Polution | Grouping | Prevents HPP attacks attempts |
 
 ## Supported Frameworks
-`pyrasp` 0.3.0 supports Flask, FastAPI and Flask
+`pyrasp` 0.3.x supports Flask, FastAPI and Flask
 
 > **IMPORTANT** FastAPI support requires `starlette` >= 0.28.0
 
@@ -90,7 +90,7 @@ MIDDLEWARE = [
 At startup of the application `pyrasp` loading information is displayed.
 
 ```
-### PyRASP v0.3.0 ##########
+### PyRASP v0.3.1 ##########
 [+] Starting PyRASP
 [+] Loading configuration from rasp.json
 [+] XSS model loaded

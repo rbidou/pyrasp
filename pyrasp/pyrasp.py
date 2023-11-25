@@ -1,4 +1,4 @@
-VERSION = '0.3.0'
+VERSION = '0.3.1'
 
 from pprint import pprint
 import time
@@ -686,6 +686,10 @@ class PyRASP():
 
         (attack_location, attack_payload) = (None, None)
 
+        ignore = False
+        attack_id = None
+        attack = None
+
         # Check if source is whitelisted
         whitelist = False
 
@@ -695,10 +699,6 @@ class PyRASP():
 
         # Not whitelisted, going through security tests
         if not whitelist:
-
-            ignore = False
-            attack_id = None
-            attack = None
 
             ### Rules to be applied to all requests
 
