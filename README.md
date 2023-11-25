@@ -18,7 +18,7 @@ Security modules, technology, and operations are provided in the table below.
 | HTTP Parameter Polution | Grouping | Prevents HPP attacks attempts |
 
 ## Supported Frameworks
-`pyrasp` 0.2.0 supports Flask and FastAPI.
+`pyrasp` 0.3.0 supports Flask, FastAPI and Flask
 
 > **IMPORTANT** FastAPI support requires `starlette` >= 0.28.0
 
@@ -34,40 +34,69 @@ cd pyrasp
 pip install -r requirements.txt
 ```
 ## Run
-### Code
+
+### Classes
+
+| Framework | `rasp_class` | Note |
+| - | - | - |
+| Flask | FaskRASP | |
+| FastAPI | FastApiRASP | **IMPORTANT** Requires starlette >= 0.28.0 |
+| Django | DjangoRASP | |
+
+### Flask & FastAPI
+
+**Guidelines**
+
 `pyrasp` requires 2 lines of code to run.
 
 `from pyrasp.pyrasp import <rasp_class>`
 
 `<rasp_class>(<framework_instrance>, conf = <configuration_file>)`
 
-> **IMPORTANT** the second line must be located the main section of the code
+**Examples**
 
-## Classes
-| Framework | `rasp_class` | Note |
-| - | - | - |
-| Flask | FaskRASP | |
-| FastAPI | FastApiRASP | **IMPORTANT** Requires starlette >= 0.28.0 |
-
-### Examples
-**Flask**
 ```python
 from pyrasp import FlaskRASP
-app = Flask(__name__)
 
-if __name__ == 'main':
-    FlaskRASP(app, conf = 'rasp.json')
-    app.run()
+app = Flask(__name__)
+FlaskRASP(app, conf = 'rasp.json')
 ```
 
-**FastAPI**
 ```python
 from pyrasp import FastApiRASP
 app = FastAPI()
+rasp = FastApiRASP(app, conf='rasp.json')
+```
 
-if __name__ == '__main__':
-    rasp = FastApiRASP(app, conf='rasp.json')
-    uvicorn.run(app)
+### Django
+
+**Guidelines**
+
+The `pyrasp` class must be added to the `MIDDLEWARE` variable in the `settings.py` file of the Django application.
+Additionally a `PYRASP_CONF` variable must be added to the same file. It contains the path of the configuration file.
+
+**Example**
+
+```python
+PYRASP_CONF = 'rasp.json'
+
+MIDDLEWARE = [
+    'pyrasp.pyrasp.DjangoRASP',
+    ...
+]
+```
+
+## Startup
+At startup of the application `pyrasp` loading information is displayed.
+
+```
+### PyRASP v0.3.0 ##########
+[+] Starting PyRASP
+[+] Loading configuration from rasp.json
+[+] XSS model loaded
+[+] SQLI model loaded
+[+] PyRASP succesfully started
+############################
 ```
 
 ## Configuration

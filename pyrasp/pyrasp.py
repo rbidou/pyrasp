@@ -1,4 +1,4 @@
-VERSION = '0.2.0'
+VERSION = '0.3.0'
 
 from pprint import pprint
 import time
@@ -12,10 +12,10 @@ import json
 import requests
 import socket
 from datetime import datetime
-from threading import Thread
 import signal
 import pkg_resources
 import sys
+from functools import partial
 
 # Flask
 try:
@@ -30,8 +30,18 @@ try:
 except:
     pass
 
+# Django
+try:
+    from django.conf import settings as django_settings
+    from django.http import HttpResponse
+    from django.urls import resolve
+
+except:
+    pass
+
 # MULTIPROCESSING
-from multiprocessing import Process, Queue
+from threading import Thread
+from queue import Queue
 
 # DATA GLOBALS
 try:
@@ -55,14 +65,11 @@ except:
 
 # IP
 IP_COUNTRY = {}
-
 STOP_THREAD = False
+LOG_QUEUE = None
 
 # LOG FUNCTIONS
-def make_security_log(application, event_type, request, log_format = 'syslog', user = None, event_details = {}):
-
-    # Get source
-    source_ip = request.headers.get('X-Forwarded-For') or request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
+def make_security_log(application, event_type, source_ip, log_format = 'syslog', user = None, event_details = {}):
 
     # Get source country
     try:
@@ -159,6 +166,46 @@ def log_worker(input, server, port, format = 'syslog', protocol = 'udp', debug =
     except:
         pass
 
+def log_thread(input, server, port, format = 'syslog', protocol = 'udp', debug = False):
+
+    webhook = False
+    syslog_udp = False
+    syslog_tcp = False
+
+    if format.lower() in ['json', 'pcb']:
+        server_url = f'{protocol.lower()}://{server}:{port}/logs'
+        webhook = True
+
+    elif format.lower() == 'syslog':
+        if protocol.lower() == 'udp':
+            syslog_udp = True
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        elif protocol.lower() == 'tcp':
+            syslog_tcp = True
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    while True:
+
+        log_data = input.get()
+
+        if log_data == '--STOP--':
+            break
+
+        try:
+
+            if webhook:
+                requests.post(server_url, json=log_data, timeout=3) 
+            elif syslog_udp:
+                sock.sendto(log_data.encode(), (server, port))
+            elif syslog_tcp:
+                sock.connect((server, port))
+                sock.send(log_data)
+                sock.close()
+
+        except Exception as e:
+            if debug: 
+                print(f'[PyRASP] Error sending logs : {str(e)}')
+
 # BEACON
 def beacon_thread(rasp_instance, key):
 
@@ -166,20 +213,27 @@ def beacon_thread(rasp_instance, key):
 
     while True :
 
-        time.sleep(1)
-        counter += 1
-        if STOP_THREAD:
+        try:
+
+            time.sleep(1)
+            counter += 1
+
+            if STOP_THREAD:
+                break
+
+            if counter % rasp_instance.BEACON_DELAY == 0:
+                counter = 0
+                rasp_instance.send_beacon(key)
+
+        except KeyboardInterrupt:
             break
-        if counter % rasp_instance.BEACON_DELAY == 0:
-            counter = 0
-            rasp_instance.send_beacon(key)
 
     rasp_instance.print_screen('[+] Stopping beacon process', init=True, new_line_up = False)
         
-def handle_kb_interrupt(sig, frame):
+def handle_kb_interrupt(queue, sig, frame):
     global STOP_THREAD
     STOP_THREAD = True
-    print('[!] Stopping RASP')
+    queue.put('--STOP--')
     sys.exit()
     
 class PyRASP():
@@ -191,6 +245,7 @@ class PyRASP():
     # LOGGING
     LOG_QUEUE = None
     LOG_WORKER = None
+    LOG_THREAD = None
 
     # BEACON
     BEACON_THREAD = None
@@ -216,7 +271,7 @@ class PyRASP():
     ####################################################
 
 
-    def __init__(self, app, app_name = None, hosts = [], conf = None, key = None, verbose_level = 10, dev = False):
+    def __init__(self, app = None, app_name = None, hosts = [], conf = None, key = None, verbose_level = 10, dev = False):
 
         # Set init verbosity
         if not verbose_level == None:
@@ -282,7 +337,8 @@ class PyRASP():
             self.HOSTS = hosts
 
         # Register security checks
-        self.register_security_checks(app)
+        if not app is None:
+            self.register_security_checks(app)
 
         # Load XSS ML model
         xss_model_loaded = False
@@ -349,10 +405,8 @@ class PyRASP():
         if self.LOG_ENABLED:
             self.start_logging()
 
-        if self.KEY is not None:
-            # Set SIGNINT
-            signal.signal(signal.SIGINT, handle_kb_interrupt)
-
+        # Start beacon
+        if self.KEY:
             # Start beacon
             self.start_beacon(key)
 
@@ -503,14 +557,14 @@ class PyRASP():
 
         self.print_screen('[+] Starting logging process', init=True, new_line_up = False)
         self.LOG_QUEUE = Queue()
-        self.LOG_WORKER = Process(target=log_worker, args=(self.LOG_QUEUE, self.LOG_SERVER, self.LOG_PORT, self.LOG_FORMAT, self.LOG_PROTOCOL ))
-        self.LOG_WORKER.start()
+        self.LOG_THREAD = Thread(target=log_thread, args=(self.LOG_QUEUE, self.LOG_SERVER, self.LOG_PORT, self.LOG_FORMAT, self.LOG_PROTOCOL ))
+        self.LOG_THREAD.start()
         
-    def log_security_event(self, event_type, request, user = None, details = {}):
+    def log_security_event(self, event_type, source_ip, user = None, details = {}):
 
         try:
-            security_log = make_security_log(self.APP_NAME, event_type, request, self.LOG_FORMAT, user, details)
-        except Exception as e:
+            security_log = make_security_log(self.APP_NAME, event_type, source_ip, self.LOG_FORMAT, user, details)
+        except:
             pass
         else:
             self.LOG_QUEUE.put(security_log)
@@ -619,10 +673,9 @@ class PyRASP():
             self.print_screen(f'[!] {ATTACKS[attack_id]}: {attack["details"]["location"]} -> {attack["details"]["payload"]}')
         except:
             self.print_screen(f'[!] Attack - No details')
-        
-
+    
         if self.LOG_ENABLED:
-            self.log_security_event(ATTACKS[attack_id], request, None, attack_details)
+            self.log_security_event(ATTACKS[attack_id], source_ip, None, attack_details)
 
     ####################################################
     # CHECKS CONTROL
@@ -838,6 +891,9 @@ class PyRASP():
             
             for injection in vectors[vector_type]:
 
+                if len(injection) < self.MIN_SQLI_LEN:
+                    continue
+
                 # Identify single word
                 if not re.search('[ +\'"(]', injection):
                     continue
@@ -968,7 +1024,45 @@ class PyRASP():
     # Check HPP
     def check_hpp(self, request):
 
+        hpp = False
+        hpp_param = None
         attack = None
+
+        query_string = self.get_query_string(request)
+        posted_data = self.get_posted_data(request)
+
+        variables = {}
+
+        for qs_variable in query_string:
+
+            if not qs_variable in variables:
+                variables[qs_variable] = []
+
+            variables[qs_variable].extend(query_string[qs_variable])
+
+        for post_variable in posted_data:
+
+            if not post_variable in variables:
+                variables[post_variable] = []
+
+            variables[post_variable].extend(query_string[post_variable])
+
+        for variable in variables:
+            if len(variables[variable]) > 1:
+                hpp = True
+                hpp_param = variable
+                break
+
+
+        if hpp:
+            attack = {
+                'type': ATTACK_HPP,
+                'details': {
+                    'location': 'param',
+                    'payload': hpp_param
+                }
+
+            }
 
         return attack
 
@@ -1086,7 +1180,7 @@ class PyRASP():
         return self.GTFO_MSG, 4
 
     ####################################################
-    # UTILS
+    # PARAMS & VECTORS
     ####################################################
     
     # Get request params
@@ -1112,7 +1206,91 @@ class PyRASP():
             
         }
 
+        # Request path
+        request_path_elements = self.get_request_path(request)
+        for path_element in request_path_elements:
+            if len(path_element):
+                vectors['path'].extend(self.decode_value(path_element))
+
+        # Query strings
+        query_string = self.get_query_string(request)
+        for qs_variable in query_string:
+            qs_values = query_string[qs_variable]
+            vectors['qs_variables'].extend(qs_variable)
+            for qs_value in qs_values:
+                if len(qs_value):
+                    vectors['qs_values'].extend(self.decode_value(qs_value))
+
+        # Posted data
+        posted_data = self.get_posted_data(request)
+        for post_variable in posted_data:
+            post_values = posted_data[post_variable]
+            vectors['post_variables'].extend(post_variable)
+            for post_value in post_values:
+                if len(post_value):
+                    vectors['post_values'].extend(self.decode_value(post_value))
+
+        # JSON
+        (json_keys, json_values) = self.get_json_data(request)
+        
+        vectors['json_keys'] = json_keys
+
+        for json_value in json_values:
+            vectors['json_values'].extend(self.decode_value(json_value))    
+
+        # Headers
+        headers = self.get_request_headers(request)
+        for header in headers:
+
+            # Cookies
+            if header.lower() == 'cookie':
+                cookies = headers[header].split(';')
+                for cookie in cookies:
+                    cookie_parts = cookie.split('=')
+                    if len(cookie_parts) == 1:
+                        cookie_value = cookie_parts[0].strip()
+                    else:
+                        cookie_value = cookie_parts[1].strip()
+                    vectors['cookies'].extend(self.decode_value(cookie_value))
+                
+            # User Agent
+            elif header.lower() == 'user-agent':
+                vectors['user_agent'] = headers[header]
+
+            # Refererer
+            elif header.lower() == 'referer':
+                vectors['referer'] = headers[header]
+            
+            # Other headers
+            else:
+                vectors['headers_names'].append(header)
+                vectors['headers_values'].append(headers[header])
+
         return vectors
+    
+    def get_request_path(self, request):
+
+        return []
+    
+    def get_query_string(self, request):
+
+        return {}
+    
+    def get_posted_data(self, request):
+
+        return {}
+
+    def get_json_data(self, request):
+
+        return ([],[])
+    
+    def get_request_headers(self, request):
+
+        return {}
+
+    ####################################################
+    # UTILS
+    ####################################################
 
     # Check if path is to be ignored
     def check_ignore_path(self, request_path):
@@ -1191,11 +1369,37 @@ class PyRASP():
             if new_line_down:
                 print()
 
+    # Decode
+    def decode_value(self, value, decode = True, b64 = True):
+
+        decoded_variables = [ value ]
+
+        if decode:
+            try:
+                decoded = value.encode().decode('unicode_escape')
+            except:
+                pass
+            else:
+                if not decoded == value:
+                    decoded_variables.append(decoded)
+
+        if b64:
+
+            if self.DECODE_B64:
+                decoded_values = self.get_b64_values(value)
+                if len(decoded_values):
+                    decoded_variables.extend(decoded_values)
+        
+        return decoded_variables
+            
 class FlaskRASP(PyRASP):
 
     def __init__(self, app, app_name=None, hosts=[], conf=None, key=None, verbose_level=10, dev=False):
         self.PLATFORM = 'Flask'
         super().__init__(app, app_name, hosts, conf, key, verbose_level, dev)
+
+        if self.LOG_ENABLED or self.KEY:
+            signal.signal(signal.SIGINT, partial(handle_kb_interrupt, self.LOG_QUEUE))
         
     def register_security_checks(self, app):
         self.set_before_security_checks(app)
@@ -1227,17 +1431,16 @@ class FlaskRASP(PyRASP):
 
             (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
 
-            error = True
+            error = False
             response_attack = None
             request_attack = False
 
             # Get attack from @before_request checks
             if response.status_code == 1:
                 request_attack = True
-                response.status_code = 403
 
             # Check if response is error
-            if response.status_code >= 400:
+            if request_attack or response.status_code >= 400:
                 error = True
 
             # Check brute force and flood
@@ -1277,43 +1480,8 @@ class FlaskRASP(PyRASP):
 
         return attack
 
-    # Check HPP
-    def check_hpp(self, request):
-
-        hpp = False
-        hpp_param = None
-        attack = None
-
-        params = list(request.args.lists()) + list(request.form.lists())
-
-        # Same param in same location (QS or body data)
-        for param in params:
-            if len(param[1]) > 1:
-                hpp = True
-                hpp_param = param
-                break
-        
-        # Same param in pultiple locations
-        if not hpp:
-            wide_params = [ i[0] for i in params]
-            if not len(wide_params) == len(set(wide_params)):
-                hpp = True
-                hpp_param = param
-
-        if hpp:
-            attack = {
-                'type': ATTACK_HPP,
-                'details': {
-                    'location': 'param',
-                    'payload': hpp_param[0]
-                }
-
-            }
-
-        return attack
-
     ####################################################
-    # UTILS
+    # PARAMS & VECTORS
     ####################################################
     
     # Get request params
@@ -1326,111 +1494,91 @@ class FlaskRASP(PyRASP):
         host = request.host
         return (host, request_method, request_path, source_ip, timestamp)
     
-    # Get request injection vectors
-    def get_vectors(self, request):
+    def get_request_path(self, request):
 
-        vectors = {
-            'path': [],
-            'headers_names': [],
-            'headers_values': [],
-            'cookies': [],
-            'user_agent': '',
-            'referer': '',
-            'qs_variables': [],
-            'qs_values': [],
-            'post_variables': [],
-            'post_values': [],
-            'json_keys': [],
-            'json_values': [],
-            
-        }
-
-        # Request path
         request_path = request.path
-        for path_element in request_path.split('/'):
-            if len(path_element):
-                vectors['path'].append(path_element)
+        path_elements = request_path.split('/') or []
 
-        # Query strings
-        query_string = request.args.to_dict() or {}
-        for qs_variable in query_string:
-            qs_value = query_string[qs_variable]
-            vectors['qs_variables'].append(qs_variable)
-            if len(qs_value):
-                vectors['qs_values'].append(qs_value)
-            if self.DECODE_B64:
-                vectors['qs_values'].extend(self.get_b64_values(qs_value))
+        return path_elements
+    
+    def get_query_string(self, request):
 
-        # Posted data
-        posted_data = request.form.to_dict() or {}
-        for post_variable in posted_data:
-            post_value = posted_data[post_variable]
-            vectors['post_variables'].append(post_variable)
-            if len(post_value):
-                vectors['post_values'].append(post_value)
-            if self.DECODE_B64:
-                vectors['post_values'].extend(self.get_b64_values(post_value))
+        query_string = {}
 
-        # JSON
+        query_string_objects = request.args
+
+        for qs_variable in query_string_objects.keys():
+            qs_values = query_string_objects.getlist(qs_variable)
+            query_string[qs_variable] = qs_values
+        
+        return query_string
+    
+    def get_posted_data(self, request):
+
+        posted_data = {}
+
+        posted_data_full = request.get_data().decode()
+
+        posted_data_parts = posted_data_full.split('&')
+
+        for posted_data_part in posted_data_parts:
+            posted_data_tuple = posted_data_part.split('=')
+            if len(posted_data_tuple) == 2:
+                post_variable = posted_data_tuple[0]
+                post_value = posted_data_tuple[1]
+
+                if not post_variable in posted_data:
+                    posted_data[post_variable] = []
+
+                posted_data[post_variable].append(post_value)
+
+        return posted_data
+
+    def get_json_data(self, request):
+
+        json_keys = []
+        json_values = []
+
         try:
             json_data = request.get_json(force=True)
             (json_keys, json_values) = self.analyze_json(json_data)
         except:
             pass
-        else:
-            vectors['json_keys'] = json_keys
-            vectors['json_values'] = json_values
 
-        # Headers
-        for header in request.headers:
+        return (json_keys, json_values)
+    
+    def get_request_headers(self, request):
 
-            # Cookies
-            if header[0].lower() == 'cookie':
-                cookies = header[1].split(';')
-                for cookie in cookies:
-                    cookie_parts = cookie.split('=')
-                    if len(cookie_parts) == 1:
-                        cookie_value = cookie_parts[0].strip()
-                    else:
-                        cookie_value = cookie_parts[1].strip()
-                    vectors['cookies'].append(cookie_value)
+        headers = {}
 
-            # User Agent
-            if header[0].lower() == 'user-agent':
-                vectors['user_agent'] = header[1]
+        for header_tuple in request.headers:
+            headers[header_tuple[0]] = header_tuple[1]
 
-            # Refererer
-            if header[0].lower() == 'referer':
-                vectors['referer'] = header[1]
-            
-            # Other headers
-            else:
-                vectors['headers_names'].append(header[0])
-                vectors['headers_values'].append(header[1])
-
-        return vectors
+        return headers
 
 class FastApiRASP(PyRASP):
 
     def __init__(self, app, app_name=None, hosts=[], conf=None, key=None, verbose_level=10, dev=False):
         self.PLATFORM = 'FastAPI'
 
-        # Register keyboard interrupt when threads are used
-        if key:
-            @app.on_event("startup")
-            async def startup_event():
-                signal.signal(signal.SIGINT, handle_kb_interrupt)
-
         # Init
         super().__init__(app, app_name, hosts, conf, key, verbose_level, dev)
+
+        if self.LOG_ENABLED:
+            @app.on_event("shutdown")
+            async def shutdown_event():
+                global STOP_THREAD
+                self.LOG_QUEUE.put('--STOP--')
+                STOP_THREAD = True
 
     def register_security_checks(self, app):
 
         @app.middleware('http')
         async def security_checks_setup(request: Request, call_next):
-
+    
             inbound_attack = None
             outbound_attack = None
+            error = False
 
             # Get Main params
             (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
@@ -1442,11 +1590,11 @@ class FastApiRASP(PyRASP):
             inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request, vectors)
               
             # Send response
-            response = await call_next(request)
-
+            if not inbound_attack:
+                response = await call_next(request)
+            
             # Check outbound attacks
-            error = False
-            if inbound_attack:
+            if inbound_attack or response.status_code >= 400:
                 error = True
             outbound_attack = self.check_outbound_attacks(host, request_method, request_path, source_ip, timestamp, error)
 
@@ -1461,7 +1609,6 @@ class FastApiRASP(PyRASP):
 
             return response
         
-
     ####################################################
     # SECURITY CHECKS
     ####################################################
@@ -1488,30 +1635,8 @@ class FastApiRASP(PyRASP):
 
         return attack
 
-    # Check HPP
-    def check_hpp(self, request):
-
-        hpp = False
-        hpp_param = None
-        attack = None
-
-        # Not vulnerable to HPP -- Hopefully
-            
-        if hpp:
-            attack = {
-                'type': ATTACK_HPP,
-                'details': {
-                    'location': 'param',
-                    'payload': hpp_param[0]
-                }
-
-            }
-
-        return attack
-
-
     ####################################################
-    # UTILS
+    # PARAMS & VECTORS
     ####################################################
     
     # Get request params
@@ -1524,6 +1649,56 @@ class FastApiRASP(PyRASP):
         host = request.headers.get('Host')
         return (host, request_method, request_path, source_ip, timestamp)
     
+    def get_request_path(self, request):
+
+        request_path = request.url.path
+        path_elements = request_path.split('/') or []
+
+        return path_elements
+    
+    def get_query_string(self, request):
+
+        query_string = {}
+
+        query_string_items = request.query_params.multi_items()
+
+        for query_string_item in query_string_items:
+            qs_variable = query_string_item[0]
+            qs_value = query_string_item[1]
+
+            if not qs_variable in query_string:
+                query_string[qs_variable] = []
+
+            query_string[qs_variable].append(qs_value)
+
+        return query_string
+    
+    def get_posted_data(self, request):
+
+        posted_data = {}
+
+        return posted_data
+
+    async def get_json_data(self, request):
+
+        json_keys = []
+        json_values = []
+
+        try:
+            json_data = await request.json()
+            (json_keys, json_values) = self.analyze_json(json_data)
+        except:
+            json_keys = []
+            json_values = []
+
+        return (json_keys, json_values)
+    
+    def get_request_headers(self, request):
+
+        headers = request.headers
+
+        return headers
+
     # Get request injection vectors
     async def get_vectors(self, request):
 
@@ -1544,82 +1719,37 @@ class FastApiRASP(PyRASP):
         }
 
         # Request path
-        request_path = request.url.path
-        for path_element in request_path.split('/'):
+        request_path_elements = self.get_request_path(request)
+        for path_element in request_path_elements:
             if len(path_element):
-                vectors['path'].append(path_element)
+                vectors['path'].extend(self.decode_value(path_element))
 
-        # Params
-        vectors['params'] = []
-
-        # Query strings
-        query_string = {item[0]: item[1] for item in request.query_params.multi_items() }
+        query_string = self.get_query_string(request)
         for qs_variable in query_string:
-            qs_value = query_string[qs_variable]
-            vectors['qs_variables'].append(qs_variable)
-            if len(qs_value):
-                vectors['qs_values'].append(qs_value)
-            if self.DECODE_B64:
-                vectors['qs_values'].extend(self.get_b64_values(qs_value))
+            qs_values = query_string[qs_variable]
+            vectors['qs_variables'].extend(qs_variable)
+            for qs_value in qs_values:
+                if len(qs_value):
+                    vectors['qs_values'].extend(self.decode_value(qs_value))
 
-        ''' Not sure this is worth
         # Posted data
-        body_data = await request.body()
-        body_data = body_data.decode()
+        posted_data = self.get_posted_data(request)
+        for post_variable in posted_data:
+            post_value = posted_data[post_variable]
+            vectors['post_variables'].append(post_variable)
+            if len(post_value):
+                vectors['post_values'].extend(self.decode_value(post_value))
 
-        if len(body_data):
+        # JSON
+        (json_keys, json_values) = await self.get_json_data(request)
+        
+        vectors['json_keys'] = json_keys
 
-            # Check JSON body
-            is_json = True
-            try:
-                json_data = json.loads(body_data)
-            except:
-                is_json = False
-
-            # Non-JSON data
-            if not is_json:
-
-                # Split posted stuff
-                posted_params = body_data.split('&')
-
-                # Get variable and value for each
-                for posted_param in posted_params:
-
-                    posted_param_parts = posted_param.split('=')
-                    post_variable = posted_param_parts[0].strip()
-
-                    if len(posted_param_parts) > 1:
-                        post_value = ''.join(posted_param_parts[1:])
-                    else:
-                        post_value = ''
-
-                    # Set vectors parameters
-                    vectors['post_variables'].append(post_variable)
-                    if len(post_value):
-                        vectors['post_values'].append(post_value)
-                    if self.DECODE_B64:
-                        vectors['post_values'].extend(self.get_b64_values(post_value))
-
-            # JSON data
-            else:
-                (json_keys, json_values) = self.analyze_json(json_data)
-                vectors['json_keys'] = json_keys
-                vectors['json_values'] = json_values
-
-        '''
-
-        # Body - Must be JSON
-        try:
-            json_data = await request.json()
-        except:
-            pass
-        else:
-            (json_keys, json_values) = self.analyze_json(json_data)
-            vectors['json_keys'] = json_keys
-            vectors['json_values'] = json_values
+        for json_value in json_values:
+            vectors['json_values'].extend(self.decode_value(json_value))    
 
         # Headers
-        headers = request.headers
+        headers = self.get_request_headers(request)
         for header in headers:
 
             # Cookies
@@ -1631,14 +1761,14 @@ class FastApiRASP(PyRASP):
                         cookie_value = cookie_parts[0].strip()
                     else:
                         cookie_value = cookie_parts[1].strip()
-                    vectors['cookies'].append(cookie_value)
-
+                    vectors['cookies'].extend(self.decode_value(cookie_value))
+                
             # User Agent
-            if header.lower() == 'user-agent':
+            elif header.lower() == 'user-agent':
                 vectors['user_agent'] = headers[header]
 
             # Refererer
-            if header.lower() == 'referer':
+            elif header.lower() == 'referer':
                 vectors['referer'] = headers[header]
             
             # Other headers
@@ -1647,3 +1777,142 @@ class FastApiRASP(PyRASP):
                 vectors['headers_values'].append(headers[header])
 
         return vectors
+
+class DjangoRASP(PyRASP):
+
+    def __init__(self, get_response):
+
+        self.PLATFORM = 'Django'
+        self.get_response = get_response
+
+        try:
+            conf = django_settings.PYRASP_CONF or None
+        except:
+            conf = None
+
+        try:
+            key = django_settings.PYRASP_KEY or None
+        except:
+            key = None
+
+        # Init
+        super().__init__(None, None, [], conf, key, 10, True)
+
+    def __call__(self, request):
+
+        inbound_attack = None
+        outbound_attack = None
+        error = False
+
+        # Get Main params
+        (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
+
+        # Check inboud attacks
+        inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request)
+
+        if not inbound_attack:
+            response = self.get_response(request)
+
+        if inbound_attack or response.status_code >= 400:
+            error = True
+        outbound_attack = self.check_outbound_attacks(host, request_method, request_path, source_ip, timestamp, error)
+
+        if outbound_attack:
+            self.handle_attack(outbound_attack, host, request_path, source_ip, timestamp)
+        elif inbound_attack:
+            self.handle_attack(inbound_attack, host, request_path, source_ip, timestamp)
+
+        if inbound_attack or outbound_attack:
+            response = HttpResponse(self.GTFO_MSG)
+            response.status_code = 403
+
+        return response
+
+    ####################################################
+    # SECURITY FUNCTIONS
+    ####################################################
+
+    def check_route(self, request, request_method, request_path):
+
+        attack = None
+        route_exists = True
+
+        try:
+            resolve(request_path)
+        except Exception as e:
+            route_exists = False
+
+        if not route_exists:
+            attack = {
+                'type': ATTACK_PATH,
+                'details': {
+                    'location': 'request',
+                    'payload': request_method + ' ' + request_path
+                }
+            }
+
+        return attack
+
+    ####################################################
+    # UTILS
+    ####################################################
+    
+    def get_params(self, request):
+
+        request_path = request.path
+        request_method = request.method
+        source_ip_list = request.headers.get('HTTP_X_FORWARDED_FOR') or request.META.get('REMOTE_ADDR')
+        source_ip = source_ip_list.split(',')[0].strip()
+        timestamp = time.time()
+        host = request.headers.get('Host')
+
+        return (host, request_method, request_path, source_ip, timestamp)
+    
+    def get_request_path(self, request):
+
+        request_path = request.path
+        path_elements = request_path.split('/') or []
+
+        return path_elements
+    
+    def get_query_string(self, request):
+
+        query_string = {}
+
+        query_string_item = request.GET or {}
+
+        for qs_variable in query_string_item:
+            query_string[qs_variable] = query_string_item.getlist(qs_variable)
+        
+        return query_string
+    
+    def get_posted_data(self, request):
+
+        posted_data = {}
+
+        posted_data_item = request.POST or {}
+
+        for post_variable in posted_data_item:
+            posted_data[post_variable] = posted_data_item.getlist(post_variable)
+
+        return posted_data
+
+    def get_json_data(self, request):
+
+        json_keys = []
+        json_values = []
+
+        try:
+            json_data = request.body
+            (json_keys, json_values) = self.analyze_json(json_data)
+        except:
+            pass
+
+        return (json_keys, json_values)
+    
+    def get_request_headers(self, request):
+
+        headers = request.headers
+
+        return headers
+    
