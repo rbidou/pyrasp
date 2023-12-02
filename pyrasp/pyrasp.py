@@ -1,4 +1,4 @@
-VERSION = '0.4.0'
+VERSION = '0.4.1'
 
 from pprint import pprint
 import time
@@ -1537,7 +1537,12 @@ class FlaskRASP(PyRASP):
                 error = True
 
             # Check brute force and flood
-            response_attack = self.check_outbound_attacks(response.get_data(True), request_path, source_ip, timestamp, error)
+            try:
+                response_content =  response.get_data(True)
+            except:
+                pass
+            else:
+                response_attack = self.check_outbound_attacks(response_content, request_path, source_ip, timestamp, error)
                         
             if response_attack and not request_attack == None:
                 self.handle_attack(response_attack, host, request_path, source_ip, timestamp)
