@@ -1,4 +1,4 @@
-VERSION = '0.3.1'
+VERSION = '0.4.0'
 
 from pprint import pprint
 import time
@@ -20,13 +20,16 @@ from functools import partial
 # Flask
 try:
     from flask import request
+    from flask import Response as FlaskResponse
 except:
     pass
 
 # FastAPI
 try:
-    from fastapi import Request, Response
+    from fastapi import Request
+    from fastapi import Response as FastApiResponse
     from starlette.routing import Match
+    from starlette.concurrency import iterate_in_threadpool
 except:
     pass
 
@@ -52,7 +55,8 @@ try:
     from pyrasp.pyrasp_data import SQL_INJECTIONS_POINTS, SQL_INJECTIONS_SIGNATURES, SQL_INJECTIONS_VECTORS
     from pyrasp.pyrasp_data import XSS_VECTORS
     from pyrasp.pyrasp_data import COMMAND_INJECTIONS_VECTORS
-    from pyrasp.pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS
+    from pyrasp.pyrasp_data import DLP_PATTERNS
+    from pyrasp.pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP
 except:
     from pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION
     from pyrasp_data import PCB_SERVER, PCB_PROTOCOL
@@ -61,7 +65,8 @@ except:
     from pyrasp_data import SQL_INJECTIONS_POINTS, SQL_INJECTIONS_SIGNATURES, SQL_INJECTIONS_VECTORS
     from pyrasp_data import XSS_VECTORS
     from pyrasp_data import COMMAND_INJECTIONS_VECTORS
-    from pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS
+    from pyrasp_data import DLP_PATTERNS
+    from pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP
 
 # IP
 IP_COUNTRY = {}
@@ -297,12 +302,13 @@ class PyRASP():
         # Configuration
         #
 
+        self.print_screen('[+] Loading default configuration', init=True, new_line_up = False)
+        self.load_config(DEFAULT_CONFIG)
+
         # Load default configuration
         if conf == None and key == None:
-            self.print_screen('[!] No configuration provided.', init=True, new_line_up = False)
-            self.print_screen('[+] Loading default configuration', init=True, new_line_up = False)
-            self.load_config(DEFAULT_CONFIG)
-
+            self.print_screen('[!] No configuration provided. Running default configuration', init=True, new_line_up = False)
+        
         # Load configuration file
         if conf:
             self.load_file_config(conf)
@@ -456,7 +462,8 @@ class PyRASP():
         try:
             r = requests.post(beacon_url, json=data)
         except Exception as e:
-            self.print_screen(f'[!] Error connecting to cloud server: {str(e)}', init = True)
+            self.print_screen('[PyRASP] Error connecting to cloud server')
+            #self.print_screen(f'[!] Error connecting to cloud server: {str(e)}', init = True)
             error = True
 
         # Check response status
@@ -468,7 +475,7 @@ class PyRASP():
                 self.print_screen('[!] Security profile not found', init = True)
                 error = True
             elif r.status_code == 500:
-                self.print_screen('[!] Server error')
+                self.print_screen('[PyRASP] Server error')
                 error = True
 
         # Get configuration
@@ -497,6 +504,7 @@ class PyRASP():
 
         # Set configuration
         if not error and server_data.get('config'):
+            self.print_screen('[PyRASP] Loading new configuration')
             self.load_config(server_data['config'])
 
     def check_updates(self):
@@ -514,7 +522,8 @@ class PyRASP():
         try:
             r = requests.post(update_url, json=data)
         except Exception as e:
-            self.print_screen(f'[!] Error connecting to cloud server: {str(e)}', init = True)
+            self.print_screen('[PyRASP] Error connecting to cloud server')
+            #self.print_screen(f'[!] Error connecting to cloud server: {str(e)}', init = True)
             error = True
 
         # Check response status
@@ -588,7 +597,8 @@ class PyRASP():
         try:
             r = requests.post(config_url, json=data)
         except Exception as e:
-            self.print_screen(f'[!] Error connecting to cloud server: {str(e)}', init = True)
+            self.print_screen('[PyRASP] Error connecting to cloud server')
+            #self.print_screen(f'[!] Error connecting to cloud server: {str(e)}', init = True)
             error = True
 
         # Check response status
@@ -600,7 +610,7 @@ class PyRASP():
                 self.print_screen('[!] Security profile not found', init = True)
                 error = True
             elif r.status_code == 500:
-                self.print_screen('[!] Server error')
+                self.print_screen('[PyRASP] Server error')
                 error = True
 
         # Get configuration
@@ -768,7 +778,7 @@ class PyRASP():
         return attack
 
     # Outbound attacks
-    def check_outbound_attacks(self, host, request_method, request_path, source_ip, timestamp, error):
+    def check_outbound_attacks(self, response_content, request_path, source_ip, timestamp, error):
 
         attack = None
 
@@ -778,7 +788,24 @@ class PyRASP():
             if self.SECURITY_CHECKS.get('flood'):
                 attack = self.flood_and_brute_check(request_path, source_ip, timestamp, error=True)
 
+        # Check DLP
+        if not error and attack == None:
+
+            if self.SECURITY_CHECKS.get('dlp') and not response_content == None:
+                attack = self.check_dlp(response_content)
+
         return attack
+    
+    # Alter response
+    def process_response(self, response, attack = None):
+
+        if not attack == None:
+            response = self.make_attack_response()
+
+        if self.CHANGE_SERVER:
+            response = self.change_server(response)
+
+        return response
 
     ####################################################
     # SECURITY FUNCTIONS
@@ -1128,6 +1155,72 @@ class PyRASP():
 
         return attack
 
+    # Check response content for DLP
+    def check_dlp(self, content):
+
+        attack = None
+        payload = None
+
+        if payload == None and self.DLP_PHONE_NUMBERS:
+            if self.check_dlp_patterns('phone', content):
+                payload = 'Phone Number'
+
+        if payload == None and self.DLP_CC_NUMBERS:
+            if self.check_dlp_patterns('cc', content):
+                payload = 'Credit Card'
+
+        if payload == None and self.DLP_PRIVATE_KEYS:
+            if self.check_dlp_patterns('key', content):
+                payload = 'Private Key'
+
+        if payload == None and self.DLP_HASHES:
+            if self.check_dlp_patterns('hash', content):
+                payload = 'Private Key'
+
+        if payload == None and self.DLP_WINDOWS_CREDS:
+            if self.check_dlp_patterns('windows', content):
+                payload = 'Windows Credentials'
+
+        if payload == None and self.DLP_LINUX_CREDS:
+            if self.check_dlp_patterns('linux', content):
+                payload = 'Linux Credentials'
+
+        if payload:
+            attack = {
+                'type': ATTACK_DLP,
+                'details': {
+                    'location': 'content',
+                    'payload': payload
+                }
+            }
+
+        return attack
+    
+    def check_dlp_patterns(self, patterns, content):
+
+        result = False
+
+        for pattern in DLP_PATTERNS[patterns]:
+            if re.search(pattern, content, re.IGNORECASE | re.MULTILINE):
+                result = True
+                break
+
+        return result
+        
+    ####################################################
+    # RESPONSE PROCESSING
+    ####################################################
+
+    def change_server(self, response):
+
+        response.headers['Server'] = self.SERVER_HEADER
+
+        return response
+    
+    def make_attack_response(self):
+
+        return None
+
     ####################################################
     # BLACKLIST
     ####################################################
@@ -1444,14 +1537,12 @@ class FlaskRASP(PyRASP):
                 error = True
 
             # Check brute force and flood
-            response_attack = self.check_outbound_attacks(host, request_method, request_path, source_ip, timestamp, error)
+            response_attack = self.check_outbound_attacks(response.get_data(True), request_path, source_ip, timestamp, error)
                         
             if response_attack and not request_attack == None:
                 self.handle_attack(response_attack, host, request_path, source_ip, timestamp)
 
-            if response_attack or request_attack:
-                response.status_code = 403
-                response.content = self.GTFO_MSG
+            response = self.process_response(response, request_attack or response_attack)
 
             return response
 
@@ -1479,6 +1570,18 @@ class FlaskRASP(PyRASP):
             }
 
         return attack
+
+    ####################################################
+    # RESPONSE PROCESSING
+    ####################################################
+    
+    def make_attack_response(self):
+
+        response = FlaskResponse()
+        response.set_data(self.GTFO_MSG)
+        response.status_code = self.DENY_STATUS_CODE
+
+        return response
 
     ####################################################
     # PARAMS & VECTORS
@@ -1592,20 +1695,28 @@ class FastApiRASP(PyRASP):
             # Send response
             if not inbound_attack:
                 response = await call_next(request)
+            else:
+                response = FastApiResponse()
             
             # Check outbound attacks
             if inbound_attack or response.status_code >= 400:
                 error = True
-            outbound_attack = self.check_outbound_attacks(host, request_method, request_path, source_ip, timestamp, error)
+                response_content = None
+            else:
+                
+                response_body = [chunk async for chunk in response.body_iterator]
+                response.body_iterator = iterate_in_threadpool(iter(response_body))
+                response_content = response_body[0].decode()
+                
+            outbound_attack = self.check_outbound_attacks(response_content, request_path, source_ip, timestamp, error)
 
             if outbound_attack:
                 self.handle_attack(outbound_attack, host, request_path, source_ip, timestamp)
             elif inbound_attack:
                 self.handle_attack(inbound_attack, host, request_path, source_ip, timestamp)
 
-            if inbound_attack or outbound_attack:
-                response = Response(content=self.GTFO_MSG)
-                response.status_code = 403
+            
+            response = self.process_response(response, inbound_attack or outbound_attack)
 
             return response
         
@@ -1634,6 +1745,17 @@ class FastApiRASP(PyRASP):
             }
 
         return attack
+
+    ####################################################
+    # RESPONSE PROCESSING
+    ####################################################
+    
+    def make_attack_response(self):
+
+        response = FastApiResponse(content = self.GTFO_MSG, status_code= self.DENY_STATUS_CODE)
+        
+        return response
+
 
     ####################################################
     # PARAMS & VECTORS
@@ -1796,7 +1918,7 @@ class DjangoRASP(PyRASP):
             key = None
 
         # Init
-        super().__init__(None, None, [], conf, key, 10, True)
+        super().__init__(None, None, [], conf, key, 10, False)
 
     def __call__(self, request):
 
@@ -1812,19 +1934,23 @@ class DjangoRASP(PyRASP):
 
         if not inbound_attack:
             response = self.get_response(request)
+        else:
+            response = HttpResponse()
 
         if inbound_attack or response.status_code >= 400:
             error = True
-        outbound_attack = self.check_outbound_attacks(host, request_method, request_path, source_ip, timestamp, error)
+            response_content = None
+        else:
+            response_content = response.content.decode()
+
+        outbound_attack = self.check_outbound_attacks(response_content, request_path, source_ip, timestamp, error)
 
         if outbound_attack:
             self.handle_attack(outbound_attack, host, request_path, source_ip, timestamp)
         elif inbound_attack:
             self.handle_attack(inbound_attack, host, request_path, source_ip, timestamp)
 
-        if inbound_attack or outbound_attack:
-            response = HttpResponse(self.GTFO_MSG)
-            response.status_code = 403
+        response = self.process_response(response, inbound_attack or outbound_attack)
 
         return response
 
@@ -1852,6 +1978,18 @@ class DjangoRASP(PyRASP):
             }
 
         return attack
+
+    ####################################################
+    # RESPONSE PROCESSING
+    ####################################################
+
+    def make_attack_response(self):
+
+        response = HttpResponse()
+        response.content = self.GTFO_MSG
+        response.status_code = self.DENY_STATUS_CODE
+
+        return response
 
     ####################################################
     # UTILS

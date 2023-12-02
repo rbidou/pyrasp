@@ -1,6 +1,18 @@
 # Python RASP
+
+<p>
+    <img src="https://img.shields.io/badge/Version-0.4.0-green?style=for-the-badge" alt="version 0.4.0"/>
+    <a href="https://www.paracyberbellum.io">
+        <img src="https://img.shields.io/badge/A%20project%20by-ParaCyberBellum-blue?style=for-the-badge" alt="A project by ParaCyberBellum"/>
+    </a>
+    <a href="https://twitter.com/ParaCyberBellum">
+        <img src="https://img.shields.io/badge/Twitter-@ParaCyberBellum-yellow?style=for-the-badge&color=666666" alt="@ParaCyberBellum on Twitter"/>
+        <!-- <img src="https://img.shields.io/twitter/follow/ParaCyberBellum?style=social" alt="@ParaCyberBellum on Twitter"/> -->
+    </a>
+</p>
+
 ## Overview
-`pyrasp` is a Runtime Application Self Protection package for Python-based Web Servers. It protects against the main attacks web applications are exposed to from within the application. 
+`pyrasp` is a **Runtime Application Self Protection** package for Python-based Web Servers. It protects against the main attacks web applications are exposed to, from within the application. 
 
 One specificity of `pyrasp` relies on the fact that it does not use signatures. Instead it will leverage decoys, thresholds, system and application internals, machine learning and grammatical analysis.
 
@@ -16,9 +28,10 @@ Security modules, technology, and operations are provided in the table below.
 | XSS | Machine Learning | Detects and XSS attempts |
 | Command Injection | System Internals | Prevents command injections attempts |
 | HTTP Parameter Polution | Grouping | Prevents HPP attacks attempts |
+| Data Leak Prevention | Regexp | Blocks outgoing sensible data |
 
 ## Supported Frameworks
-`pyrasp` 0.3.x supports Flask, FastAPI and Flask
+`pyrasp` 0.4.x supports Flask, FastAPI and Django
 
 > **IMPORTANT** FastAPI support requires `starlette` >= 0.28.0
 
@@ -90,7 +103,7 @@ MIDDLEWARE = [
 At startup of the application `pyrasp` loading information is displayed.
 
 ```
-### PyRASP v0.3.1 ##########
+### PyRASP v0.4.0 ##########
 [+] Starting PyRASP
 [+] Loading configuration from rasp.json
 [+] XSS model loaded
@@ -101,12 +114,14 @@ At startup of the application `pyrasp` loading information is displayed.
 
 ## Configuration
 Configuration is set from a JSON file.
+> `pyrasp` first loads default values and overwrite data from configuration.
 ### Example File
 ```json
 {
     "HOSTS" : ["mysite.mydomain.com"],
     "APP_NAME" : "Web Server",
     "GTFO_MSG" : "<html><head /><body><h1>You have been blocked</h1></body></html>",
+    "DENY_STATUS_CODE": 403,
 
     "VERBOSE" : 10,
     "DECODE_B64" : true,
@@ -120,7 +135,8 @@ Configuration is set from a JSON file.
         "sqli": 2,
         "xss": 2,
         "hpp": 2,
-        "command": 2
+        "command": 2,
+        "dlp": 2
     },    
 
     "WHITELIST": [],
@@ -154,11 +170,21 @@ Configuration is set from a JSON file.
     "SQLI_PROBA" : 0.725,
     "MIN_SQLI_LEN": 8,
 
+    "DLP_PHONE_NUMBERS": false,
+    "DLP_CC_NUMBERS": false,
+    "DLP_PRIVATE_KEYS": false,
+    "DLP_HASHES": false,
+    "DLP_WINDOWS_CREDS": false,
+    "DLP_LINUX_CREDS": false,
+
     "LOG_ENABLED": false,
     "LOG_FORMAT": "Syslog",
     "LOG_SERVER": "127.0.0.1",        
     "LOG_PORT": 514,    
-    "LOG_PROTOCOL": "UDP"
+    "LOG_PROTOCOL": "UDP",
+
+    "CHANGE_SERVER": true,
+    "SERVER_HEADER": "Apache"
 }
 ```
 ### Parameters
@@ -168,6 +194,7 @@ Configuration is set from a JSON file.
 | `HOSTS` | list of trings | any | `[]` | List of valid 'Host' headers checked for spoofing detection |
 | `APP_NAME` | string | any | `["Web Server"]` | Identification of the web application in the logs |
 | `GTFO_MSG` | string | any | `["Blocked"]` | Message displayed when request is blocked. HTML page code is authorized |
+| `DENY_STATUS_CODE` | integer | any | `403` | HTTP status code sent in response to blocked requests | 
 | `VERBOSE` | integer | any | `0` | Verbosity level - *see "Specific Parameters Values" section below* |
 | `DECODE_B64` | boolean | true, false | `true` | Decode Base64-encoded payloads |
 | `SECURITY_CHECKS` | integer |  0, 1, 2, 3 | see below | Security modules status - *see "Specific Parameters Values" section below*  |
@@ -185,15 +212,23 @@ Configuration is set from a JSON file.
 | `MIN_XSS_LEN` | integer | any | `16` | Minimum payload size to be checked by XSS engine |
 | `SQLI_PROBA` | float | 0 to 1 | `0.725` | Machine Learning prediction minimum probability for SQL injections (should be left to 0.725) |
 | `MIN_SQLI_LEN` | integer | any | `16` | Minimum payload size to be checked by SQLI engine |
+| `DLP_PHONE_NUMBERS` | boolean | true, false | `false` | Check phone number leak |
+| `DLP_CC_NUMBERS` | boolean | true, false | `false` | Check credit card number leak |
+| `DLP_PRIVATE_KEYS` | boolean | true, false | `false` | Check private key leak |
+| `DLP_HASHES` | boolean | true, false | `false` | Check hash leak |
+| `DLP_WINDOWS_CREDS` | boolean | true, false | `false` | Check Windows credentials leak |
+| `DLP_LINUX_CREDS` | boolean | true, false | `false` | Check Linux credentials leak |
 | `LOG_ENABLED` | boolean | true, false | `false` | Enable event logging |
 | `LOG_FORMAT` | string | syslog, json | `"syslog"` | Format of event log - *see "Event Logs Format" section below* |
 | `LOG_SERVER` | string | any | `"127.0.0.1"` | Log server IP address or FQDN |
 | `LOG_PORT` | integer | 1 - 36635 | `514` | Log server port |
 | `LOG_PROTOCOL` | string | tcp, udp, http, https | `"udp"` | Log server protocol (tcp or udp for syslog, http or https for json) |
+| `CHANGE_SERVER` | boolean | true, false | `true` | Change response "Server" header |
+| `SERVER_HEADER` | string | any | `"Apache"` | Message displayed when request is blocked. HTML page code is authorized |
 
 **Default ignore paths**
 ```json
-"IGNORE_PATHS" : ["^/favicon.ico$","^/robots.txt$","^/sitemap\.(txt|xml)$"]
+"IGNORE_PATHS" : ["^/favicon.ico$","^/robots.txt$","^/sitemap\\.(txt|xml)$"]
 ```
 
 **Default decoy paths**
@@ -230,6 +265,7 @@ Configuration is set from a JSON file.
 | `xss` | XSS | Machine Learning | 2 |
 | `command`| Command Injection | 2 |
 | `hpp` | HTTP Parameter Polution | 2 |
+| `dlp` | Data Leak Prevention | 0 |
 
 > Note: `spoofing` module refers to "Host" header validation
 
@@ -306,6 +342,7 @@ Possible values for attack types are:
 | `post_values` | Posted data value |
 | `json_keys` | JSON key name |
 | `json_values` | JSON key value |
+| `content` | Response content |
 
 ## Contacts
 Renaud Bidou - renaud@paracyberbellum.io
