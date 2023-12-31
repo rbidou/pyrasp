@@ -62,6 +62,7 @@ ATTACKS_CHECKS = [
 ]
 
 SQL_INJECTIONS_SIGNATURES = [ '@@VERSION', '@@DATABASE', 'master\.\.xp_cmdshell', 'updatexml\(']
+SQL_INJECTIONS_FP = ['^[a-zA-Z][\\w]+\\s*&\\s*[a-zA-Z][\\w]+$']
 
 SQL_INJECTIONS_POINTS = [
     'select * from test where id={{vector}}',

@@ -1,4 +1,4 @@
-VERSION = '0.4.1'
+VERSION = '0.4.2'
 
 from pprint import pprint
 import time
@@ -52,7 +52,7 @@ try:
     from pyrasp.pyrasp_data import PCB_SERVER, PCB_PROTOCOL
     from pyrasp.pyrasp_data import DEFAULT_CONFIG
     from pyrasp.pyrasp_data import ATTACKS, ATTACKS_CHECKS
-    from pyrasp.pyrasp_data import SQL_INJECTIONS_POINTS, SQL_INJECTIONS_SIGNATURES, SQL_INJECTIONS_VECTORS
+    from pyrasp.pyrasp_data import SQL_INJECTIONS_POINTS, SQL_INJECTIONS_VECTORS, SQL_INJECTIONS_FP
     from pyrasp.pyrasp_data import XSS_VECTORS
     from pyrasp.pyrasp_data import COMMAND_INJECTIONS_VECTORS
     from pyrasp.pyrasp_data import DLP_PATTERNS
@@ -62,7 +62,7 @@ except:
     from pyrasp_data import PCB_SERVER, PCB_PROTOCOL
     from pyrasp_data import DEFAULT_CONFIG
     from pyrasp_data import ATTACKS, ATTACKS_CHECKS
-    from pyrasp_data import SQL_INJECTIONS_POINTS, SQL_INJECTIONS_SIGNATURES, SQL_INJECTIONS_VECTORS
+    from pyrasp_data import SQL_INJECTIONS_POINTS, SQL_INJECTIONS_VECTORS, SQL_INJECTIONS_FP
     from pyrasp_data import XSS_VECTORS
     from pyrasp_data import COMMAND_INJECTIONS_VECTORS
     from pyrasp_data import DLP_PATTERNS
@@ -877,7 +877,9 @@ class PyRASP():
 
         host = full_host.split(':')[0]
 
-        if not host in self.HOSTS:
+        if not any([
+            host in self.HOSTS,
+            full_host in self.HOSTS]):
             attack = {
                 'type': ATTACK_SPOOF,
                 'details': {
@@ -918,16 +920,23 @@ class PyRASP():
             
             for injection in vectors[vector_type]:
 
-                if len(injection) < self.MIN_SQLI_LEN:
-                    continue
-
                 # Identify single word
                 if not re.search('[ +\'"(]', injection):
                     continue
 
-                # Identify only alphanum and space
+                # Identify only alphanum, space
                 if re.search('^[a-zA-Z0-9 ]+$', injection) and not re.search('\snull\s', injection):
                     continue
+
+                # Identify known FP
+                fp = False
+                for fp_pattern in SQL_INJECTIONS_FP:
+                    if re.search(fp_pattern, injection):
+                        fp = True
+                        break
+                if fp:
+                    continue
+
 
                 # Test signatures
                 '''
@@ -979,12 +988,17 @@ class PyRASP():
                             except Exception as e:
                                 if 'no such table' in str(e):
                                     sql_injection = True
+                                    
 
                         if sql_injection:
                             break
                             
                     if sql_injection:
+                        
                         break
+
+                if len(injection) < self.MIN_SQLI_LEN:
+                    continue
 
                 # Machine Learning check
                 if not sql_injection:
@@ -1072,14 +1086,13 @@ class PyRASP():
             if not post_variable in variables:
                 variables[post_variable] = []
 
-            variables[post_variable].extend(query_string[post_variable])
+            variables[post_variable].extend(posted_data[post_variable])
 
         for variable in variables:
             if len(variables[variable]) > 1:
                 hpp = True
                 hpp_param = variable
                 break
-
 
         if hpp:
             attack = {

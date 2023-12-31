@@ -7,7 +7,6 @@
     </a>
     <a href="https://twitter.com/ParaCyberBellum">
         <img src="https://img.shields.io/badge/Twitter-@ParaCyberBellum-yellow?style=for-the-badge&color=666666" alt="@ParaCyberBellum on Twitter"/>
-        <!-- <img src="https://img.shields.io/twitter/follow/ParaCyberBellum?style=social" alt="@ParaCyberBellum on Twitter"/> -->
     </a>
 </p>
 
@@ -69,14 +68,14 @@ pip install -r requirements.txt
 **Examples**
 
 ```python
-from pyrasp import FlaskRASP
+from pyrasp.pyrasp import FlaskRASP
 
 app = Flask(__name__)
 FlaskRASP(app, conf = 'rasp.json')
 ```
 
 ```python
-from pyrasp import FastApiRASP
+from pyrasp.pyrasp import FastApiRASP
 app = FastAPI()
 rasp = FastApiRASP(app, conf='rasp.json')
 ```
