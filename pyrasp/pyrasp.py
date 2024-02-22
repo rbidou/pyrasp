@@ -1,4 +1,4 @@
-VERSION = '0.4.2'
+VERSION = '0.4.3'
 
 from pprint import pprint
 import time
@@ -16,6 +16,7 @@ import signal
 import pkg_resources
 import sys
 from functools import partial
+import psutil
 
 # Flask
 try:
@@ -454,7 +455,9 @@ class PyRASP():
     def send_beacon(self, key):
 
         beacon_url = f'{PCB_PROTOCOL}://{PCB_SERVER}/rasp/beacon'
-        data = { 'key': key, 'version': VERSION }
+        cpu = psutil.cpu_percent()
+        mem = psutil.virtual_memory().percent
+        data = { 'key': key, 'version': VERSION, 'cpu': cpu, 'mem': mem }
 
         error = False
 
