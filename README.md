@@ -1,7 +1,7 @@
 # Python RASP
 
 <p>
-    <img src="https://img.shields.io/badge/Version-0.4.2-green?style=for-the-badge" alt="version 0.4.3"/>
+    <img src="https://img.shields.io/badge/Version-0.4.3-green?style=for-the-badge" alt="version 0.4.3"/>
     <a href="https://www.paracyberbellum.io">
         <img src="https://img.shields.io/badge/A%20project%20by-ParaCyberBellum-blue?style=for-the-badge" alt="A project by ParaCyberBellum"/>
     </a>
