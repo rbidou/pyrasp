@@ -172,6 +172,8 @@ DEFAULT_CONFIG = {
     "LOG_PROTOCOL": "UDP",
 
     "CHANGE_SERVER": True,
-    "SERVER_HEADER": "Apache"
+    "SERVER_HEADER": "Apache",
+
+    "BEACON_DELAY": 5
 }
 

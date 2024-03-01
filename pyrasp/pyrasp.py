@@ -1,4 +1,4 @@
-VERSION = '0.4.3'
+VERSION = '0.4.4'
 
 from pprint import pprint
 import time
@@ -269,8 +269,15 @@ class PyRASP():
     # Misc
     INIT_VERBOSE = 0
 
-    # Platform
+    # PLATFORM
     PLATFORM = 'Unknown'
+
+    # REQUESTS
+    REQUESTS = {
+        'success': 0,
+        'errors': 0,
+        'attacks': 0
+    }
     
     ####################################################
     # CONSTRUCTOR & DESTRUCTOR
@@ -457,7 +464,12 @@ class PyRASP():
         beacon_url = f'{PCB_PROTOCOL}://{PCB_SERVER}/rasp/beacon'
         cpu = psutil.cpu_percent()
         mem = psutil.virtual_memory().percent
-        data = { 'key': key, 'version': VERSION, 'cpu': cpu, 'mem': mem }
+        data = { 
+            'key': key, 
+            'version': VERSION, 
+            'cpu': cpu, 
+            'mem': mem,
+            'requests': self.REQUESTS }
 
         error = False
 
@@ -504,6 +516,15 @@ class PyRASP():
             if not server_result:
                 self.print_screen(f'[!] Error: {server_message}')
                 error = True
+    
+        # Reset requests count
+        if not error:
+            self.REQUESTS = {
+                'success': 0,
+                'errors': 0,
+                'attacks': 0
+            }
+
 
         # Set configuration
         if not error and server_data.get('config'):
@@ -804,6 +825,13 @@ class PyRASP():
 
         if not attack == None:
             response = self.make_attack_response()
+            self.REQUESTS['attacks'] += 1
+
+        elif response.status_code == 200:
+            self.REQUESTS['success'] += 1
+
+        else:
+            self.REQUESTS['errors'] += 1
 
         if self.CHANGE_SERVER:
             response = self.change_server(response)
