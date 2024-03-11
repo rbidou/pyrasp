@@ -190,7 +190,7 @@ Configuration is set from a JSON file.
 **Generic Parameters Table**
 | Parameter | Type | Values | Default | Usage |
 | - | - | - | - | - |
-| `HOSTS` | list of trings | any | `[]` | List of valid 'Host' headers checked for spoofing detection |
+| `HOSTS` | list of strings | any | `[]` | List of valid 'Host' headers checked for spoofing detection |
 | `APP_NAME` | string | any | `["Web Server"]` | Identification of the web application in the logs |
 | `GTFO_MSG` | string | any | `["Blocked"]` | Message displayed when request is blocked. HTML page code is authorized |
 | `DENY_STATUS_CODE` | integer | any | `403` | HTTP status code sent in response to blocked requests | 
