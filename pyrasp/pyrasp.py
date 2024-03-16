@@ -1,4 +1,4 @@
-VERSION = '0.4.4'
+VERSION = '0.5.0'
 
 from pprint import pprint
 import time
@@ -71,7 +71,8 @@ except:
 
 # IP
 IP_COUNTRY = {}
-STOP_THREAD = False
+STOP_LOG_THREAD = False
+STOP_BEACON_THREAD = False
 LOG_QUEUE = None
 
 # LOG FUNCTIONS
@@ -133,14 +134,16 @@ def get_ip_country(source_ip):
 
     return country
 
-def log_worker(input, server, port, format = 'syslog', protocol = 'udp', debug = False):
+def log_worker(input, server, port, format = 'syslog', protocol = 'udp', path = '', debug = False):
 
     webhook = False
     syslog_udp = False
     syslog_tcp = False
 
     if format.lower() in ['json', 'pcb']:
-        server_url = f'{protocol.lower()}://{server}:{port}/logs'
+        if not path.startswith('/'):
+            path = '/'+path
+        server_url = f'{protocol.lower()}://{server}:{port}{path}'
         webhook = True
 
     elif format.lower() == 'syslog':
@@ -172,13 +175,15 @@ def log_worker(input, server, port, format = 'syslog', protocol = 'udp', debug =
     except:
         pass
 
-def log_thread(input, server, port, format = 'syslog', protocol = 'udp', debug = False):
+def log_thread(rasp_instance, input, server, port, format = 'syslog', protocol = 'udp', path = '', debug = False):
 
     webhook = False
     syslog_udp = False
     syslog_tcp = False
 
     if format.lower() in ['json', 'pcb']:
+        if not path.startswith('/'):
+            path = '/'+path
         server_url = f'{protocol.lower()}://{server}:{port}/logs'
         webhook = True
 
@@ -190,12 +195,7 @@ def log_thread(input, server, port, format = 'syslog', protocol = 'udp', debug =
             syslog_tcp = True
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    while True:
-
-        log_data = input.get()
-
-        if log_data == '--STOP--':
-            break
+    for log_data in iter(input.get, '--STOP--'):
 
         try:
 
@@ -212,8 +212,10 @@ def log_thread(input, server, port, format = 'syslog', protocol = 'udp', debug =
             if debug: 
                 print(f'[PyRASP] Error sending logs : {str(e)}')
 
+    rasp_instance.print_screen('[+] Logging process stopped', init=True, new_line_up = False)
+
 # BEACON
-def beacon_thread(rasp_instance, key):
+def beacon_thread(rasp_instance):
 
     counter = 0
 
@@ -224,22 +226,19 @@ def beacon_thread(rasp_instance, key):
             time.sleep(1)
             counter += 1
 
-            if STOP_THREAD:
+            if STOP_BEACON_THREAD:
+                rasp_instance.print_screen('[+] Stopping beacon process', init=True, new_line_up = False)
                 break
 
             if counter % rasp_instance.BEACON_DELAY == 0:
                 counter = 0
-                rasp_instance.send_beacon(key)
+                rasp_instance.send_beacon()
 
-        except KeyboardInterrupt:
-            break
-
-    rasp_instance.print_screen('[+] Stopping beacon process', init=True, new_line_up = False)
+        except:
+            pass
         
-def handle_kb_interrupt(queue, sig, frame):
-    global STOP_THREAD
-    STOP_THREAD = True
-    queue.put('--STOP--')
+def handle_kb_interrupt(rasp_instance, sig, frame):
+    rasp_instance.__del__()
     sys.exit()
     
 class PyRASP():
@@ -262,6 +261,7 @@ class PyRASP():
     # Attacks detection
     IP_LIST = {}
     BLACKLIST = {}
+    BLACKLIST_NEW = []
 
     # LOGS
     LOG_ENABLED = False
@@ -284,7 +284,7 @@ class PyRASP():
     ####################################################
 
 
-    def __init__(self, app = None, app_name = None, hosts = [], conf = None, key = None, verbose_level = 10, dev = False):
+    def __init__(self, app = None, app_name = None, hosts = [], conf = None, key = None, cloud_url = None, verbose_level = 10, dev = False):
 
         # Set init verbosity
         if not verbose_level == None:
@@ -293,25 +293,19 @@ class PyRASP():
 
         # Development mode
         if dev:
-            global PCB_SERVER
-            PCB_SERVER = '127.0.0.1:8080'
+            pass
 
         # Start display
         self.print_screen(f'### PyRASP v{VERSION} ##########', init=True, new_line_up=True)
         self.print_screen('[+] Starting PyRASP', init=True, new_line_up=False)
 
         #
-        # Check updates
-        #
-
-        # self.check_updates()
-
-        #
         # Configuration
         #
 
         self.print_screen('[+] Loading default configuration', init=True, new_line_up = False)
-        self.load_config(DEFAULT_CONFIG)
+        for config_key in DEFAULT_CONFIG:
+            setattr(self, config_key, DEFAULT_CONFIG[config_key])
 
         # Load default configuration
         if conf == None and key == None:
@@ -322,7 +316,8 @@ class PyRASP():
             self.load_file_config(conf)
 
         # Load from server
-        if key:
+        self.CLOUD_URL = cloud_url
+        if not self.CLOUD_URL is None:
             if not self.load_cloud_config(key):
                 self.print_screen('[!] Could not load configuration. Security NOT enabled.', init=True, new_line_up = True)
                 return
@@ -420,29 +415,21 @@ class PyRASP():
             self.start_logging()
 
         # Start beacon
-        if self.KEY:
+        if self.BEACON:
             # Start beacon
-            self.start_beacon(key)
+            self.start_beacon()
 
         self.print_screen('[+] PyRASP succesfully started', init=True)
         self.print_screen('############################', init=True, new_line_down=True)
 
     def __del__(self):
 
-        if self.KEY is not None:
-            if self.BEACON_THREAD and self.BEACON_THREAD.is_alive():
-                global STOP_THREAD
-                STOP_THREAD = True
+        if self.BEACON:
+            global STOP_BEACON_THREAD
+            STOP_BEACON_THREAD = True
 
         if self.LOG_ENABLED:
-
-            # Clean logging process shutdown
-            self.print_screen('[+] Terminating logging process', init=True, new_line_up = False)
-
-            try:
-                pass
-            except Exception as e:
-                self.print_screen('[!] Error terminating logging process', init=True, new_line_up = False)
+            self.LOG_QUEUE.put('--STOP--')
 
         return
     
@@ -453,24 +440,41 @@ class PyRASP():
     # BEACON & UPDATES
     ####################################################
 
-    def start_beacon(self, key):
+    def start_beacon(self):
 
         self.print_screen('[+] Starting beacon process', init=True, new_line_up = False)
-        self.BEACON_THREAD = Thread(target=beacon_thread, args=(self, key))
+        self.BEACON_THREAD = Thread(target=beacon_thread, args=(self, ))
         self.BEACON_THREAD.start()
         
-    def send_beacon(self, key):
+    def send_beacon(self):
 
-        beacon_url = f'{PCB_PROTOCOL}://{PCB_SERVER}/rasp/beacon'
+        #
+        # BEACON
+        #
+
+        beacon_url = self.BEACON_URL
         cpu = psutil.cpu_percent()
         mem = psutil.virtual_memory().percent
-        data = { 
-            'key': key, 
-            'version': VERSION, 
-            'cpu': cpu, 
-            'mem': mem,
-            'requests': self.REQUESTS }
 
+        data = { 
+            'key': self.KEY, 
+            'version': VERSION,
+        }
+
+        # Telemetry
+        if self.TELEMETRY_DATA:
+            telemetry = {
+                'cpu': cpu,
+                'memory': mem,
+                'requests': self.REQUESTS
+            }
+
+            data['telemetry'] = telemetry
+            
+        # Blacklist exchange
+        if self.BLACKLIST_SHARE:
+            data['blacklist'] = self.BLACKLIST_NEW
+        
         error = False
 
         # Send requets to server
@@ -478,7 +482,6 @@ class PyRASP():
             r = requests.post(beacon_url, json=data)
         except Exception as e:
             self.print_screen('[PyRASP] Error connecting to cloud server')
-            #self.print_screen(f'[!] Error connecting to cloud server: {str(e)}', init = True)
             error = True
 
         # Check response status
@@ -493,17 +496,10 @@ class PyRASP():
                 self.print_screen('[PyRASP] Server error')
                 error = True
 
-        # Get configuration
+        # Get beacon response JSON
         if not error:
             try:
                 server_response = r.json()
-            except:
-                self.print_screen('[!] Corrupted server response')
-                error = True
-
-        # Get response data
-        if not error:
-            try:
                 server_message = server_response['message']
                 server_result = server_response['status']
                 server_data = server_response['data']
@@ -517,19 +513,80 @@ class PyRASP():
                 self.print_screen(f'[!] Error: {server_message}')
                 error = True
     
-        # Reset requests count
+        #
+        # RESPONSE HANDLING
+        #
+
+        # Reset requests count and blacklist
         if not error:
             self.REQUESTS = {
                 'success': 0,
                 'errors': 0,
                 'attacks': 0
             }
+            self.BLACKLIST_NEW = []
 
+        # Update blasklist
+        if not error:
+
+            blacklist_update = server_data.get('blacklist')
+
+            if blacklist_update:
+
+                # Add new blacklist entries
+                new_blacklist_entries = blacklist_update.get('new') or []
+                time_now = int(time.time())
+                for new_entry in new_blacklist_entries:
+                    if not new_entry in self.BLACKLIST:
+                        self.BLACKLIST[new_entry] = time_now
+            
+                # Force remove blacklist entries
+                remove_blacklist_entries = blacklist_update.get('remove') or []
+                for remove_entry in remove_blacklist_entries:
+                    if remove_entry in self.BLACKLIST:
+                        del self.BLACKLIST[remove_entry]
+            
 
         # Set configuration
         if not error and server_data.get('config'):
             self.print_screen('[PyRASP] Loading new configuration')
-            self.load_config(server_data['config'])
+            new_config = { 'config': server_data['config'] }
+            config_changes = self.check_config_change(server_data['config'])
+            self.load_config(new_config)
+
+        # Restart services
+        if not error:
+            if config_changes['logs']:
+                self.start_logging(restart = True) 
+            if config_changes['beacon']:
+                pass
+
+    def check_config_change(self, new_config):
+
+        config_changes = {
+            'logs': False,
+            'beacon': False
+        }
+
+        # Check logs config change
+        if any([
+            not new_config['LOG_FORMAT'] == self.LOG_FORMAT,
+            not new_config['LOG_PROTOCOL'] == self.LOG_PROTOCOL,
+            not new_config['LOG_SERVER'] == self.LOG_SERVER,
+            not new_config['LOG_PORT'] == self.LOG_PORT,
+            not new_config['LOG_PATH'] == self.LOG_PATH
+        ]):
+            config_changes['logs'] = True
+
+        # Check beacon config change
+        if any([
+            not new_config['BEACON_DELAY'] == self.BEACON_DELAY,
+            not new_config['BEACON_URL'] == self.BEACON_URL
+        ]):
+            config_changes['beacon'] = True
+
+
+        return config_changes
 
     def check_updates(self):
 
@@ -586,11 +643,16 @@ class PyRASP():
     # LOGGING
     ####################################################
 
-    def start_logging(self):
+    def start_logging(self, restart = False):
+
+        if restart:
+            self.LOG_QUEUE.put('--STOP--')
+            while self.LOG_THREAD.is_alive():
+                time.sleep(1)
 
         self.print_screen('[+] Starting logging process', init=True, new_line_up = False)
         self.LOG_QUEUE = Queue()
-        self.LOG_THREAD = Thread(target=log_thread, args=(self.LOG_QUEUE, self.LOG_SERVER, self.LOG_PORT, self.LOG_FORMAT, self.LOG_PROTOCOL ))
+        self.LOG_THREAD = Thread(target=log_thread, args=(self, self.LOG_QUEUE, self.LOG_SERVER, self.LOG_PORT, self.LOG_FORMAT, self.LOG_PROTOCOL, self.LOG_PATH ))
         self.LOG_THREAD.start()
         
     def log_security_event(self, event_type, source_ip, user = None, details = {}):
@@ -610,16 +672,16 @@ class PyRASP():
 
         result = False
 
-        self.print_screen('[+] Loading configuration from cloud', init = True, new_line_up = False)
+        self.print_screen(f'[+] Loading configuration from {self.CLOUD_URL}', init = True, new_line_up = False)
 
-        config_url = f'{PCB_PROTOCOL}://{PCB_SERVER}/rasp/connect'
+        #config_url = f'{self.cloud_protocol}://{self.cloud_server}:{self.cloud_port}/rasp/connect'
         data = { 'key': key, 'version': VERSION, 'platform': self.PLATFORM }
 
         error = False
         
         # Send requets to server
         try:
-            r = requests.post(config_url, json=data)
+            r = requests.post(self.CLOUD_URL, json=data)
         except Exception as e:
             self.print_screen('[PyRASP] Error connecting to cloud server')
             #self.print_screen(f'[!] Error connecting to cloud server: {str(e)}', init = True)
@@ -637,7 +699,7 @@ class PyRASP():
                 self.print_screen('[PyRASP] Server error')
                 error = True
 
-        # Get configuration
+        # Check response format
         if not error:
             try:
                 server_response = r.json()
@@ -681,11 +743,20 @@ class PyRASP():
    
     def load_config(self, config):
 
-        for key in config:
-            setattr(self, key, config[key])
+        # Load parameters
+        config_params = config.get('config') or {}
+
+        for key in config_params:
+            setattr(self, key, config_params[key])
         
-        for key in config:
-            self.print_screen(f'[+] {key} => {config[key]}', 100, init=False)        
+        for key in config_params:
+            self.print_screen(f'[+] {key} => {config_params[key]}', 100, init=False)    
+
+        # Load blacklist
+        config_blacklist = config.get('blacklist')
+
+        if config_blacklist:
+            self.BLACKLIST = config_blacklist
 
         return True
 
@@ -709,7 +780,7 @@ class PyRASP():
             self.print_screen(f'[!] Attack - No details')
     
         if self.LOG_ENABLED:
-            self.log_security_event(ATTACKS[attack_id], source_ip, None, attack_details)
+            self.log_security_event(ATTACKS_CHECKS[attack_id], source_ip, None, attack_details)
 
     ####################################################
     # CHECKS CONTROL
@@ -766,7 +837,7 @@ class PyRASP():
             if not ignore:
 
                 # Check brute force and flood on vulnerable paths
-                if attack_id == None:
+                if attack == None:
                     if self.SECURITY_CHECKS.get('flood'):
                         attack = self.flood_and_brute_check(request_path, source_ip, timestamp)
                             
@@ -809,8 +880,9 @@ class PyRASP():
         # Check flood errors
         if error:
 
-            if self.SECURITY_CHECKS.get('flood'):
-                attack = self.flood_and_brute_check(request_path, source_ip, timestamp, error=True)
+            if not attack is None and attack.get('type') == ATTACK_BLACKLIST:
+                if self.SECURITY_CHECKS.get('flood'):
+                    attack = self.flood_and_brute_check(request_path, source_ip, timestamp, error=True)
 
         # Check DLP
         if not error and attack == None:
@@ -1298,11 +1370,13 @@ class PyRASP():
         return attack
     
     # Blacklist source IP
-    def blacklist_ip(self, source_ip, timestamp, attack_type):
+    def blacklist_ip(self, source_ip, timestamp, attack_type = None):
 
         result = True
 
-        self.BLACKLIST[source_ip] = timestamp
+        if not source_ip in self.BLACKLIST:
+            self.BLACKLIST[source_ip] = timestamp
+            self.BLACKLIST_NEW.append([source_ip, int(timestamp)])
 
         return result
     
@@ -1311,7 +1385,6 @@ class PyRASP():
     ####################################################
 
     # Unused for now
-
     def decoy(self, request):
 
         return self.GTFO_MSG, 4
@@ -1531,12 +1604,12 @@ class PyRASP():
             
 class FlaskRASP(PyRASP):
 
-    def __init__(self, app, app_name=None, hosts=[], conf=None, key=None, verbose_level=10, dev=False):
+    def __init__(self, app, app_name=None, hosts=[], conf=None, key=None, cloud_url=None,verbose_level=10, dev=False):
         self.PLATFORM = 'Flask'
-        super().__init__(app, app_name, hosts, conf, key, verbose_level, dev)
+        super().__init__(app, app_name, hosts, conf, key, cloud_url, verbose_level, dev)
 
-        if self.LOG_ENABLED or self.KEY:
-            signal.signal(signal.SIGINT, partial(handle_kb_interrupt, self.LOG_QUEUE))
+        if self.LOG_ENABLED or self.BEACON:
+            signal.signal(signal.SIGINT, partial(handle_kb_interrupt, self))
         
     def register_security_checks(self, app):
         self.set_before_security_checks(app)
@@ -1710,19 +1783,22 @@ class FlaskRASP(PyRASP):
 
 class FastApiRASP(PyRASP):
 
-    def __init__(self, app, app_name=None, hosts=[], conf=None, key=None, verbose_level=10, dev=False):
+    def __init__(self, app, app_name=None, hosts=[], conf=None, key=None, cloud_url=None, verbose_level=10, dev=False):
         self.PLATFORM = 'FastAPI'
 
         # Init
-        super().__init__(app, app_name, hosts, conf, key, verbose_level, dev)
+        super().__init__(app, app_name, hosts, conf, key, cloud_url, verbose_level, dev)
 
         if self.LOG_ENABLED:
             @app.on_event("shutdown")
             async def shutdown_event():
-                global STOP_THREAD
-                self.LOG_QUEUE.put('--STOP--')
-                STOP_THREAD = True
+                if self.BEACON:
+                    global STOP_BEACON_THREAD
+                    STOP_BEACON_THREAD = True
 
+                if self.LOG_ENABLED:
+                    self.LOG_QUEUE.put('--STOP--')
+                
     def register_security_checks(self, app):
 
         @app.middleware('http')
@@ -1966,8 +2042,13 @@ class DjangoRASP(PyRASP):
         except:
             key = None
 
+        try:
+            cloud_url = django_settings.PYRASP_CLOUD_URL or None
+        except:
+            cloud_url = None
+
         # Init
-        super().__init__(None, None, [], conf, key, 10, False)
+        super().__init__(None, None, [], conf, key, cloud_url, 10, False)
 
     def __call__(self, request):
 

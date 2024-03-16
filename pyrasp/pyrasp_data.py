@@ -140,6 +140,7 @@ DEFAULT_CONFIG = {
 
     "BLACKLIST_DELAY" : 3600,
     "BLACKLIST_OVERRIDE" : False,
+    "BLACKLIST_SHARE" : False,
 
     "DECOY_ROUTES" : [ 
         "/admin", "/login", "/logs", "/version",    
@@ -170,10 +171,15 @@ DEFAULT_CONFIG = {
     "LOG_SERVER" : "127.0.0.1",    
     "LOG_PORT": 514,
     "LOG_PROTOCOL": "UDP",
+    "LOG_PATH": "",
 
     "CHANGE_SERVER": True,
     "SERVER_HEADER": "Apache",
 
-    "BEACON_DELAY": 5
+    "BEACON": False,
+    "TELEMETRY_DATA": False,
+    "BEACON_URL": None,
+    "BEACON_DELAY": 30
+    
 }
 

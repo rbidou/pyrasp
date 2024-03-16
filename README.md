@@ -1,7 +1,7 @@
 # Python RASP
 
 <p>
-    <img src="https://img.shields.io/badge/Version-0.4.4-green?style=for-the-badge" alt="version 0.4.4"/>
+    <img src="https://img.shields.io/badge/Version-0.5.0-green?style=for-the-badge" alt="version 0.5.0"/>
     <a href="https://www.paracyberbellum.io">
         <img src="https://img.shields.io/badge/A%20project%20by-ParaCyberBellum-blue?style=for-the-badge" alt="A project by ParaCyberBellum"/>
     </a>
@@ -11,7 +11,9 @@
 </p>
 
 ## Overview
-`pyrasp` is a **Runtime Application Self Protection** package for Python-based Web Servers. It protects against the main attacks web applications are exposed to, from within the application. 
+`pyrasp` is a **Runtime Application Self Protection** package for Python-based Web Servers. It protects against the main attacks web applications are exposed to, from within the application. It is also capable of providing basic telemetry such as cpu and memory usage and requests count.
+
+It can operate using a local configuration file or get it from a remote/cloud server. Logs and telemetry (optional) can be sent to remote servers as well, and threats information can be shared across agents.
 
 One specificity of `pyrasp` relies on the fact that it does not use signatures. Instead it will leverage decoys, thresholds, system and application internals, machine learning and grammatical analysis.
 
@@ -30,7 +32,7 @@ Security modules, technology, and operations are provided in the table below.
 | Data Leak Prevention | Regexp | Blocks outgoing sensible data |
 
 ## Supported Frameworks
-`pyrasp` 0.4.x supports Flask, FastAPI and Django
+`pyrasp` 0.5.x supports Flask, FastAPI and Django
 
 > **IMPORTANT** FastAPI support requires `starlette` >= 0.28.0
 
@@ -63,7 +65,14 @@ pip install -r requirements.txt
 
 `from pyrasp.pyrasp import <rasp_class>`
 
-`<rasp_class>(<framework_instrance>, conf = <configuration_file>)`
+<ins>Local Agent</ins>
+
+`<rasp_class>(<framework_instance>, conf = <configuration_file>)`
+
+
+<ins>Cloud Agent</ins>
+
+`<rasp_class>(<framework_instance>, cloud_url = <configuration_url>, key = <agent_key>)`
 
 **Examples**
 
@@ -77,7 +86,7 @@ FlaskRASP(app, conf = 'rasp.json')
 ```python
 from pyrasp.pyrasp import FastApiRASP
 app = FastAPI()
-rasp = FastApiRASP(app, conf='rasp.json')
+rasp = FastApiRASP(app, cloud_url = 'https://pyrasp.my.org/config', key = '000000-1111-2222-3333-44444444' )
 ```
 
 ### Django
@@ -85,12 +94,22 @@ rasp = FastApiRASP(app, conf='rasp.json')
 **Guidelines**
 
 The `pyrasp` class must be added to the `MIDDLEWARE` variable in the `settings.py` file of the Django application.
-Additionally a `PYRASP_CONF` variable must be added to the same file. It contains the path of the configuration file.
+A `PYRASP_CONF` variable must be added to the same file. It contains the path of the configuration file.
 
-**Example**
+**Examples**
 
 ```python
 PYRASP_CONF = 'rasp.json'
+
+MIDDLEWARE = [
+    'pyrasp.pyrasp.DjangoRASP',
+    ...
+]
+```
+
+```python
+PYRASP_CLOUD_URL = 'https://pyrasp.my.org/config'
+PYRASP_KEY = '000000-1111-2222-3333-44444444'
 
 MIDDLEWARE = [
     'pyrasp.pyrasp.DjangoRASP',
@@ -102,7 +121,7 @@ MIDDLEWARE = [
 At startup of the application `pyrasp` loading information is displayed.
 
 ```
-### PyRASP v0.4.4 ##########
+### PyRASP v0.5.0 ##########
 [+] Starting PyRASP
 [+] Loading configuration from rasp.json
 [+] XSS model loaded
@@ -114,6 +133,8 @@ At startup of the application `pyrasp` loading information is displayed.
 ## Configuration
 Configuration is set from a JSON file.
 > `pyrasp` first loads default values and overwrite data from configuration.
+
+> If configuration is loaded from a remote server, the response body to the request should be a JSON containing a valid pyrasp configuration file as described below.
 ### Example File
 ```json
 {
@@ -181,16 +202,23 @@ Configuration is set from a JSON file.
     "LOG_SERVER": "127.0.0.1",        
     "LOG_PORT": 514,    
     "LOG_PROTOCOL": "UDP",
+    "LOG_PATH": "",
 
     "CHANGE_SERVER": true,
-    "SERVER_HEADER": "Apache"
+    "SERVER_HEADER": "Apache",
+
+    //-- Cloud Operations --//
+    "BEACON": false,
+    "TELEMETRY_DATA": false,
+    "BEACON_URL": "",
+    "BEACON_DELAY": 30
 }
 ```
 ### Parameters
 **Generic Parameters Table**
 | Parameter | Type | Values | Default | Usage |
 | - | - | - | - | - |
-| `HOSTS` | list of trings | any | `[]` | List of valid 'Host' headers checked for spoofing detection |
+| `HOSTS` | list of strings | any | `[]` | List of valid 'Host' headers checked for spoofing detection |
 | `APP_NAME` | string | any | `["Web Server"]` | Identification of the web application in the logs |
 | `GTFO_MSG` | string | any | `["Blocked"]` | Message displayed when request is blocked. HTML page code is authorized |
 | `DENY_STATUS_CODE` | integer | any | `403` | HTTP status code sent in response to blocked requests | 
@@ -222,6 +250,7 @@ Configuration is set from a JSON file.
 | `LOG_SERVER` | string | any | `"127.0.0.1"` | Log server IP address or FQDN |
 | `LOG_PORT` | integer | 1 - 36635 | `514` | Log server port |
 | `LOG_PROTOCOL` | string | tcp, udp, http, https | `"udp"` | Log server protocol (tcp or udp for syslog, http or https for json) |
+| `LOG_PATH` | string | any | `""` | URL path to use for http(s) log webhook (ex: /logs) |
 | `CHANGE_SERVER` | boolean | true, false | `true` | Change response "Server" header |
 | `SERVER_HEADER` | string | any | `"Apache"` | Message displayed when request is blocked. HTML page code is authorized |
 
@@ -259,9 +288,9 @@ Configuration is set from a JSON file.
 | `headers`| Forbidden Headers | 0 | 
 | `path` | Requests Validation | 1 | 
 | `spoofing`| Spoofing | 0 |
-| `decoy`| Decoy | Path | 2 |
+| `decoy`| Decoy | 2 |
 | `sqli`| SQL Injection | 2 |
-| `xss` | XSS | Machine Learning | 2 |
+| `xss` | XSS | 2 |
 | `command`| Command Injection | 2 |
 | `hpp` | HTTP Parameter Polution | 2 |
 | `dlp` | Data Leak Prevention | 0 |
@@ -310,18 +339,20 @@ Configuration is set from a JSON file.
 ```
 
 ### Attack Types
-Possible values for attack types are:
-- Blacklisted IP
-- Invalid Path
-- Flood
-- Host Spoofing
-- Decoyed
-- Format Mismatch
-- SQL Injection
-- XSS
-- Parameter Pollution
-- Command Injection
-- Forbidden Header
+| Value | Attack Type |
+| - | - |
+| `blacklist`| Blacklisted IP |
+| `path`| Invalid Path |
+| `flood`| Flood |
+| `spoofing` | Host Spoofing |
+| `decoy` | Decoyed Request |
+| `format` | Format Mismatch |
+| `sqli` | SQL Injection |
+| `xss`| XSS |
+| `hpp` | Parameter Pollution |
+| `command` | Command Injection |
+| `headers` | Forbidden Header |
+| `dlp` | Data Leak Prevention |
 
 ### Payload Locations
 | Value | Location |
@@ -342,6 +373,197 @@ Possible values for attack types are:
 | `json_keys` | JSON key name |
 | `json_values` | JSON key value |
 | `content` | Response content |
+
+## Cloud Operations
+`pyrasp` is capable to operate in a 'cloud' environment:
+- Retrieve initial configuration and upoates from remote server
+- Retrieve Blacklist from remote server at startup
+- Provide regular agent status to remote server
+- Provide basic telemetry (cpu & memory usage, number of requests)
+- Share new blacklisted entries
+- Update blacklist with new entries provided by remote server
+
+### Run
+
+**Flask & FastAPI**
+
+`pyrasp` instance creation requires 2 specific arguments:
+- `cloud_url`: URL to retrieve agent configuration from
+- `key`: unique key to identify the agent
+
+`<rasp_class>(<framework_instance>, cloud_url = <configuration_url>, key = <agent_key>)`
+
+
+```python
+from pyrasp.pyrasp import FastApiRASP
+app = FastAPI()
+rasp = FastApiRASP(app, cloud_url = 'https://pyrasp.my.org/config', key = '000000-1111-2222-3333-44444444' )
+```
+
+**Django**
+
+For cloud agents, `PYRASP_CLOUD_URL` and `PYRASP_KEY` variables must be added to the `settings.py` file of the Django application:
+- `PYRASP_CLOUD_URL` contains the URL to retrieve agent configuration from
+- `PYRASP_KEY` is used by the server to uniquely identify the agent.
+
+
+```python
+PYRASP_CLOUD_URL = 'https://pyrasp.my.org/config'
+PYRASP_KEY = '000000-1111-2222-3333-44444444'
+
+MIDDLEWARE = [
+    'pyrasp.pyrasp.DjangoRASP',
+    ...
+]
+```
+
+### Configuration download
+**Overview**
+
+Configuration file and blacklist are retrieved by the agent through a `GET` request to the URL specified.
+
+At agent startup the remote configuration URL is displayed.
+```
+### PyRASP v0.5.0 ##########
+[+] Starting PyRASP
+[+] Loading default configuration
+[+] Loading configuration from http://192.168.0.10/rasp/connect
+[+] XSS model loaded
+[+] SQLI model loaded
+[+] Starting logging process
+[+] Starting beacon process
+[+] PyRASP succesfully started
+############################
+```
+
+**Format**
+
+The response to the request **MUST** be an `application/json` body containing the configuration.
+<br>The data structure **MUST** be a dictionary (`{}`)
+
+The JSON configuration **MUST** be provided in the `config` key.
+<br>Optionaly an initial blacklist can be provided as a dictionary structure in the `blacklist` key of the response.
+<br>The blacklist structure **MUST** comply with the format detailed in teh example below.
+
+**Configuration example**
+
+```json
+{
+    "config": {
+        "HOSTS" : ["mysite.mydomain.com"],
+        "APP_NAME" : "Web Server",
+        "GTFO_MSG" : "<html><head /><body><h1>You have been blocked</h1></body></html>",
+        "DENY_STATUS_CODE": 403,
+        ...
+    },
+    "blacklist": {
+        "<ip_address>": <detection_epoch_time>,
+        ...
+    }
+}
+```
+
+## Status, Telemetry, Configuration & Blacklist updates
+### Configuration
+Agent can be configured to regularly send status, telemetry and new blacklist entries to a remote server. 
+
+This feature is enabled by setting the `BEACON` configuration parameter to `true`.
+<br>The `BEACON_URL` parameter **must** be set. It defines the URL to which beacon requests will be sent.
+<br>The number of seconds between 2 beacon requests is defined by the `BEACON_DELAY` parameter. The default value ios set to `30` seconds.
+
+If the `TELEMETRY_DATA` parameter is set to `true` cpu and memory average usage, as well as the count of succesfull, error and attack requests are sent to the remote server.
+
+If the `BLACKLIST_SHARE` paremeter is set to `true` new blacklist entries will be sent to the remote server.
+
+The parameters to be set in the configuration files are listed in the table below.
+| Parameter | Type | Values | Default | Usage |
+| - | - | - | - | - |
+| `BEACON` | boolean | true, false | `false` | Enable status beacon to management server |
+| `BEACON_URL` | string | URL | `""` | URL to send status data |
+| `BEACON_DELAY` | integer | any | `30` | Number of seconds between each beacon |
+| `TELEMETRY_DATA` | boolean | true, false | `false` | Add telemetry data (cpu, memory, request count) to status beacon |
+| `BLACKLIST_SHARE` | boolean | true, false | `false` | Share blacklist entries with other agents (cloud only) |
+
+### Request format
+Data is sent to the remote server as a `POST` request to the URL provided in the `BEACON_URL` configuration parameter. Body of the request is a JSON structure detailed below.
+
+1. Default beacon request
+```json
+{ 
+    "key": "<agent-key>", 
+    "version": "<agent-version>",
+}
+```
+
+2. Beacon request with telemetry
+> This request is sent to the remote server if the `TELEMETRY_DATA` parameter is set to `true`
+```json
+{ 
+    "key": "<agent-key>", 
+    "version": "<agent-version>",
+    "telemetry": {
+        "cpu": <cpu_usage_percent>, 
+        "memory": <memory_usage_percent>,
+        "requests": {
+            "success": <successful_requests_count>,
+            "error": <error_requests_count>,
+            "attacks": <attacks_requests_count>
+        }
+    }
+}
+```
+
+3. Beacon request with blacklist updates
+> This request is sent to the remote server if the `BLACKLIST_SHARE` parameter is set to `true`
+```json
+{ 
+    "key": "<agent-key>", 
+    "version": "<agent-version>",
+    "blacklist": [
+        [ "<ip_address>", <detection_epoch_time> ],
+        ...
+    ]
+}
+```
+
+### Response format
+Response to beacon requests **MUST** be in an `application/json` format. 
+<br>The data structure **MUST** be a dictionary (`{}`)
+- If a configuration update is required, it **MUST** be located in the `config` key
+- If a Blacklist update is required,  it **MUST** be located in the `blacklist` key
+
+**Configuration updates**
+
+Configuration updates **MUST** be provided in the `config` key of the response data structure, containing the new configuration.
+
+```json
+{
+    "config": {
+        "HOSTS" : ["mysite.mydomain.com"],
+        "APP_NAME" : "Web Server",
+        "GTFO_MSG" : "<html><head /><body><h1>You have been blocked</h1></body></html>",
+        "DENY_STATUS_CODE": 403,
+        ...
+    }
+}
+```
+
+**Blacklist updates**
+
+Blacklist updates **MUST** be provided in a structure located in the `blacklist` key of the beacon response.
+<br>The structure **MUST** contain 2 keys:
+- `new`: list of new IP addresses to be added to the blacklist
+- `remove`: list of IP addresses to be removed from the blacklist
+
+```json
+{
+    "blacklist": {
+        "new": [ "<ip_address>", ... ],
+        "remove": [ "<ip_address>", ... ]
+    }
+}
+```
+
 
 ## Contacts
 Renaud Bidou - renaud@paracyberbellum.io
