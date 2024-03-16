@@ -376,7 +376,7 @@ Configuration is set from a JSON file.
 
 ## Cloud Operations
 `pyrasp` is capable to operate in a 'cloud' environment:
-- Retrieve initial configuration and upoates from remote server
+- Retrieve initial configuration and updates from remote server
 - Retrieve Blacklist from remote server at startup
 - Provide regular agent status to remote server
 - Provide basic telemetry (cpu & memory usage, number of requests)
