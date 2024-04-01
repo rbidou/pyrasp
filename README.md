@@ -1,7 +1,7 @@
 # Python RASP
 
 <p>
-    <img src="https://img.shields.io/badge/Version-0.5.0-green?style=for-the-badge" alt="version 0.5.0"/>
+    <img src="https://img.shields.io/badge/Version-0.5.1-green?style=for-the-badge" alt="version 0.5.1"/>
     <a href="https://www.paracyberbellum.io">
         <img src="https://img.shields.io/badge/A%20project%20by-ParaCyberBellum-blue?style=for-the-badge" alt="A project by ParaCyberBellum"/>
     </a>
@@ -121,7 +121,7 @@ MIDDLEWARE = [
 At startup of the application `pyrasp` loading information is displayed.
 
 ```
-### PyRASP v0.5.0 ##########
+### PyRASP v0.5.1 ##########
 [+] Starting PyRASP
 [+] Loading configuration from rasp.json
 [+] XSS model loaded
@@ -389,9 +389,11 @@ Configuration is set from a JSON file.
 
 `pyrasp` instance creation requires 2 specific arguments:
 - `cloud_url`: URL to retrieve agent configuration from
-- `key`: unique key to identify the agent
+- `key`: unique key to identify the agent 
 
 `<rasp_class>(<framework_instance>, cloud_url = <configuration_url>, key = <agent_key>)`
+
+> Those 2 parameters can be set as environment vaiables (see below)
 
 
 ```python
@@ -417,6 +419,12 @@ MIDDLEWARE = [
 ]
 ```
 
+**Environment Variables**
+
+`cloud_url` and `key` values can be set as environment variables:
+- `PYRASP_CLOUD_URL`: URL to retrieve agent configuration from
+- `PYRASP_KEY`: unique key to identify the agent 
+
 ### Configuration download
 **Overview**
 
@@ -424,7 +432,7 @@ Configuration file and blacklist are retrieved by the agent through a `GET` requ
 
 At agent startup the remote configuration URL is displayed.
 ```
-### PyRASP v0.5.0 ##########
+### PyRASP v0.5.1 ##########
 [+] Starting PyRASP
 [+] Loading default configuration
 [+] Loading configuration from http://192.168.0.10/rasp/connect

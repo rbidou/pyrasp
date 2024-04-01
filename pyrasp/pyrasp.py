@@ -1,4 +1,4 @@
-VERSION = '0.5.0'
+VERSION = '0.5.1'
 
 from pprint import pprint
 import time
@@ -17,11 +17,13 @@ import pkg_resources
 import sys
 from functools import partial
 import psutil
+import os
 
 # Flask
 try:
     from flask import request
     from flask import Response as FlaskResponse
+    from werkzeug.utils import import_string
 except:
     pass
 
@@ -247,6 +249,9 @@ class PyRASP():
     # GLOBAL VARIABLES
     ####################################################
 
+    # ROUTES
+    ROUTES = []
+
     # LOGGING
     LOG_QUEUE = None
     LOG_WORKER = None
@@ -300,6 +305,12 @@ class PyRASP():
         self.print_screen('[+] Starting PyRASP', init=True, new_line_up=False)
 
         #
+        # Get Routes
+        #
+
+        self.get_routes(app)
+
+        #
         # Configuration
         #
 
@@ -308,7 +319,7 @@ class PyRASP():
             setattr(self, config_key, DEFAULT_CONFIG[config_key])
 
         # Load default configuration
-        if conf == None and key == None:
+        if conf == None and cloud_url == None:
             self.print_screen('[!] No configuration provided. Running default configuration', init=True, new_line_up = False)
         
         # Load configuration file
@@ -316,12 +327,25 @@ class PyRASP():
             self.load_file_config(conf)
 
         # Load from server
-        self.CLOUD_URL = cloud_url
+        ## Get cloud URL
+        if not cloud_url is None:
+            self.CLOUD_URL = cloud_url
+        else:
+            self.CLOUD_URL = os.environ.get('PYRASP_CLOUD_URL')
+    
         if not self.CLOUD_URL is None:
-            if not self.load_cloud_config(key):
-                self.print_screen('[!] Could not load configuration. Security NOT enabled.', init=True, new_line_up = True)
-                return
-            self.KEY = key
+
+            ## Get key
+            if key:
+                self.KEY = key
+            else:
+                self.KEY = os.environ.get('PYRASP_KEY')
+
+            if self.KEY is None:
+                self.print_screen('[!] Agent key could not be found. Running default configuration.', init=True, new_line_up = True)
+            
+            if not self.load_cloud_config():
+                self.print_screen('[!] Could not load configuration from cloud server. Running default configuration.', init=True, new_line_up = True)
 
         # Default config customization
         if all([
@@ -665,17 +689,24 @@ class PyRASP():
             self.LOG_QUEUE.put(security_log)
 
     ####################################################
+    # ROUTES
+    ####################################################
+            
+    def get_routes(self, app):
+        pass
+
+    ####################################################
     # CONFIGURATION
     ####################################################
 
-    def load_cloud_config(self, key):
+    def load_cloud_config(self):
 
         result = False
 
         self.print_screen(f'[+] Loading configuration from {self.CLOUD_URL}', init = True, new_line_up = False)
 
         #config_url = f'{self.cloud_protocol}://{self.cloud_server}:{self.cloud_port}/rasp/connect'
-        data = { 'key': key, 'version': VERSION, 'platform': self.PLATFORM }
+        data = { 'key': self.KEY, 'version': VERSION, 'platform': self.PLATFORM }
 
         error = False
         
@@ -1610,14 +1641,15 @@ class FlaskRASP(PyRASP):
 
         if self.LOG_ENABLED or self.BEACON:
             signal.signal(signal.SIGINT, partial(handle_kb_interrupt, self))
-        
-    def register_security_checks(self, app):
-        self.set_before_security_checks(app)
-        self.set_after_security_checks(app)
-
+            
     ####################################################
     # SECURITY CHECKS
     ####################################################
+
+    # Register
+    def register_security_checks(self, app):
+        self.set_before_security_checks(app)
+        self.set_after_security_checks(app)
 
     # Incoming request
     def set_before_security_checks(self, app):
