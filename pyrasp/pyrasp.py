@@ -1,4 +1,4 @@
-VERSION = '0.5.1'
+VERSION = '0.6.0'
 
 from pprint import pprint
 import time
@@ -45,14 +45,18 @@ try:
 except:
     pass
 
-# MULTIPROCESSING
-from threading import Thread
-from queue import Queue
+# MULTIPROCESSING - NOT FOR AWS ENVIRONMENTS
+if os.environ.get("AWS_EXECUTION_ENV") is None:
+    from threading import Thread
+    from queue import Queue
+
+# WRAPPER FOR AWS LAMBDA HANDLER
+else:
+    from functools import wraps
 
 # DATA GLOBALS
 try:
     from pyrasp.pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION
-    from pyrasp.pyrasp_data import PCB_SERVER, PCB_PROTOCOL
     from pyrasp.pyrasp_data import DEFAULT_CONFIG
     from pyrasp.pyrasp_data import ATTACKS, ATTACKS_CHECKS
     from pyrasp.pyrasp_data import SQL_INJECTIONS_POINTS, SQL_INJECTIONS_VECTORS, SQL_INJECTIONS_FP
@@ -62,7 +66,6 @@ try:
     from pyrasp.pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP
 except:
     from pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION
-    from pyrasp_data import PCB_SERVER, PCB_PROTOCOL
     from pyrasp_data import DEFAULT_CONFIG
     from pyrasp_data import ATTACKS, ATTACKS_CHECKS
     from pyrasp_data import SQL_INJECTIONS_POINTS, SQL_INJECTIONS_VECTORS, SQL_INJECTIONS_FP
@@ -78,13 +81,16 @@ STOP_BEACON_THREAD = False
 LOG_QUEUE = None
 
 # LOG FUNCTIONS
-def make_security_log(application, event_type, source_ip, log_format = 'syslog', user = None, event_details = {}):
+def make_security_log(application, event_type, source_ip, log_format = 'syslog', user = None, event_details = {}, resolve_country = True):
 
     # Get source country
-    try:
-        country = get_ip_country(source_ip)
-    except:
-        country = 'Private'
+    if resolve_country:
+        try:
+            country = get_ip_country(source_ip)
+        except:
+            country = 'Private'
+    else:
+        country = ''
 
     if log_format.lower() == 'syslog':
 
@@ -318,13 +324,11 @@ class PyRASP():
         for config_key in DEFAULT_CONFIG:
             setattr(self, config_key, DEFAULT_CONFIG[config_key])
 
+        '''
         # Load default configuration
         if conf == None and cloud_url == None:
             self.print_screen('[!] No configuration provided. Running default configuration', init=True, new_line_up = False)
-        
-        # Load configuration file
-        if conf:
-            self.load_file_config(conf)
+        '''
 
         # Load from server
         ## Get cloud URL
@@ -346,6 +350,15 @@ class PyRASP():
             
             if not self.load_cloud_config():
                 self.print_screen('[!] Could not load configuration from cloud server. Running default configuration.', init=True, new_line_up = True)
+
+        # Load configuration file
+        if not conf is None:
+            self.CONF_FILE = conf
+        else:
+            self.CONF_FILE = os.environ.get('PYRASP_CONF')
+
+        if not self.CONF_FILE is None:
+            self.load_file_config(self.CONF_FILE)
 
         # Default config customization
         if all([
@@ -373,73 +386,77 @@ class PyRASP():
         if not app is None:
             self.register_security_checks(app)
 
-        # Load XSS ML model
-        xss_model_loaded = False
-        if not dev:
-            xss_model_file = 'xss_model-'+XSS_MODEL_VERSION
-        else:
-            xss_model_file = 'ml-engines/xss_model-dev'
 
-        ## From source
-        try:
-            self.xss_model = pickle.load(open(xss_model_file,'rb'))
-        except:
-            pass
-        else:
-            xss_model_loaded = True
+        ## XSS & SQLI models loaded only if enabled in configuration
+        if self.SECURITY_CHECKS.get('xss'):
+            # Load XSS ML model
+            xss_model_loaded = False
+            if not dev:
+                xss_model_file = 'xss_model-'+XSS_MODEL_VERSION
+            else:
+                xss_model_file = 'xss_model-dev'
 
-        ## From package
-        if not xss_model_loaded:
+            ## From source
             try:
-                xss_model_file = pkg_resources.resource_filename('pyrasp', 'data/'+xss_model_file)
-                self.xss_model = pickle.load(open(xss_model_file,'rb'))
+                self.xss_model = pickle.load(open('ml-engines/'+xss_model_file,'rb'))
             except:
                 pass
             else:
                 xss_model_loaded = True
 
-        if not xss_model_loaded:
-            self.print_screen('[!] XSS model not loaded', init=False, new_line_up = False)
-        else:
-            self.print_screen('[+] XSS model loaded', init=True, new_line_up = False)
+            ## From package
+            if not xss_model_loaded:
+                try:
+                    xss_model_file = pkg_resources.resource_filename('pyrasp', 'data/'+xss_model_file)
+                    self.xss_model = pickle.load(open(xss_model_file,'rb'))
+                except:
+                    pass
+                else:
+                    xss_model_loaded = True
 
-        # Load SQLI ML model
-        sqli_model_loaded = False
-        if not dev:
-            sqli_model_file = 'sqli_model-'+SQLI_MODEL_VERSION
-        else:
-            sqli_model_file = 'ml-engines/sqli_model-dev'
+            if not xss_model_loaded:
+                self.print_screen('[!] XSS model not loaded', init=False, new_line_up = False)
+            else:
+                self.print_screen('[+] XSS model loaded', init=True, new_line_up = False)
 
-        ## From source
-        try:
-            self.sqli_model = pickle.load(open(sqli_model_file,'rb'))
-        except:
-            pass
-        else:
-            sqli_model_loaded = True
+        if self.SECURITY_CHECKS.get('sqli'):
+            # Load SQLI ML model
+            sqli_model_loaded = False
+            if not dev:
+                sqli_model_file = 'sqli_model-'+SQLI_MODEL_VERSION
+            else:
+                sqli_model_file = 'sqli_model-dev'
 
-        ## From package
-        if not sqli_model_loaded:
+            ## From source
             try:
-                sqli_model_file = pkg_resources.resource_filename('pyrasp', 'data/'+sqli_model_file)
-                self.sqli_model = pickle.load(open(sqli_model_file,'rb'))
+                self.sqli_model = pickle.load(open('ml-engines/'+sqli_model_file,'rb'))
             except:
                 pass
             else:
                 sqli_model_loaded = True
 
-        if not sqli_model_loaded:
-            self.print_screen('[!] SQLI model not loaded', init=False, new_line_up = False)
-        else:
-            self.print_screen('[+] SQLI model loaded', init=True, new_line_up = False)
+            ## From package
+            if not sqli_model_loaded:
+                try:
+                    sqli_model_file = pkg_resources.resource_filename('pyrasp', 'data/'+sqli_model_file)
+                    self.sqli_model = pickle.load(open(sqli_model_file,'rb'))
+                except:
+                    pass
+                else:
+                    sqli_model_loaded = True
+
+            if not sqli_model_loaded:
+                self.print_screen('[!] SQLI model not loaded', init=False, new_line_up = False)
+            else:
+                self.print_screen('[+] SQLI model loaded', init=True, new_line_up = False)
 
 
         # Start logging
-        if self.LOG_ENABLED:
+        if self.LOG_ENABLED and not self.PLATFORM == 'AWS Lambda':
             self.start_logging()
 
         # Start beacon
-        if self.BEACON:
+        if self.BEACON and not self.PLATFORM == 'AWS Lambda':
             # Start beacon
             self.start_beacon()
 
@@ -579,7 +596,7 @@ class PyRASP():
             self.load_config(new_config)
 
         # Restart services
-        if not error:
+        if not error and not self.PLATFORM == 'AWS Lambda':
             if config_changes['logs']:
                 self.start_logging(restart = True) 
             if config_changes['beacon']:
@@ -612,57 +629,6 @@ class PyRASP():
 
         return config_changes
 
-    def check_updates(self):
-
-        self.print_screen('[*] Checking for updates', init = True, new_line_up = True)
-
-        update_url = f'{PCB_PROTOCOL}://{PCB_SERVER}/versions'
-        data = { 
-            'data_version': DATA_VERSION,
-            'xss_model_version': XSS_MODEL_VERSION
-        }
-        error = False
-
-        # Send requets to server
-        try:
-            r = requests.post(update_url, json=data)
-        except Exception as e:
-            self.print_screen('[PyRASP] Error connecting to cloud server')
-            #self.print_screen(f'[!] Error connecting to cloud server: {str(e)}', init = True)
-            error = True
-
-        # Check response status
-        if not error:
-            if r.status_code == 422:
-                self.print_screen('[!] Invalid data sent', init = True)
-                error = True
-
-        # Get versions
-        if not error:
-            try:
-                updates = r.json()
-                update_data = updates.get('update_data')
-                update_xss_model = updates.get('update_xss_model')
-
-            except:
-                self.print_screen('[!] Server data error', init = True)
-                error = True
-
-        # Update
-        if not error:
-
-            # Data
-            if update_data:
-                self.print_screen('[+] Updating WAF data', init=True)
-            else:
-                self.print_screen('[=] WAF data is up-to-date', init=True)
-
-            # XSS model
-            if update_xss_model:
-                self.print_screen('[+] Updating XSS ML model', init=True)
-            else:
-                self.print_screen('[=] XSS ML model is up-to-date', init=True)
-
     ####################################################
     # LOGGING
     ####################################################
@@ -682,7 +648,7 @@ class PyRASP():
     def log_security_event(self, event_type, source_ip, user = None, details = {}):
 
         try:
-            security_log = make_security_log(self.APP_NAME, event_type, source_ip, self.LOG_FORMAT, user, details)
+            security_log = make_security_log(self.APP_NAME, event_type, source_ip, self.LOG_FORMAT, user, details, self.RESOLVE_COUNTRY)
         except:
             pass
         else:
@@ -801,10 +767,9 @@ class PyRASP():
         attack_details = attack.get('details') or {}
         attack_check = ATTACKS_CHECKS[attack_id]
 
-        if not self.BLACKLIST_OVERRIDE:
+        if not self.BLACKLIST_OVERRIDE and self.SECURITY_CHECKS.get(attack_check) == 2:
             self.blacklist_ip(source_ip, timestamp, attack_check)
 
-        
         try:
             self.print_screen(f'[!] {ATTACKS[attack_id]}: {attack["details"]["location"]} -> {attack["details"]["payload"]}')
         except:
@@ -1070,15 +1035,6 @@ class PyRASP():
                         break
                 if fp:
                     continue
-
-
-                # Test signatures
-                '''
-                for signature in SQL_INJECTIONS_SIGNATURES:
-                    if re.search(signature, injection, re.IGNORECASE):
-                        sql_injection = True
-                        break
-                '''
 
                 # Select proper injected request format
                 quotes = ''
@@ -2216,3 +2172,214 @@ class DjangoRASP(PyRASP):
 
         return headers
     
+class LambdaRASP(PyRASP):
+
+    LAST_BEACON = time.time()
+
+    def __init__(self, app=None, app_name=None, hosts=[], conf=None, key=None, cloud_url=None, verbose_level=10, dev=False):
+        self.PLATFORM = 'AWS Lambda'
+        super().__init__(app, app_name, hosts, conf, key, cloud_url, verbose_level, dev)
+        self.send_beacon()
+
+    ####################################################
+    # LOGGING
+    ####################################################
+
+    def start_logging(self, restart = False):
+        pass
+        
+    ####################################################
+    # CHECKS CONTROL
+    ####################################################
+
+    # AWS handler wrapper
+    def register(self, f):
+    
+        @wraps(f)
+        def decorator(request, context):
+
+            # Sending beacons to get configuration and blacklist updates
+            time_now = time.time()
+            if self.BEACON and time_now > self.LAST_BEACON + self.BEACON_DELAY:
+                self.send_beacon()
+                self.LAST_BEACON = time_now
+
+            (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
+
+            # Analyze request
+            attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request)
+
+            if attack == None:
+                response = f(request, context)
+
+                # Set response params
+                response_content_structure = response.get('body') or {}
+                response_content = json.dumps(response_content_structure)
+                error = True
+                status_code = response.get('statusCode')
+                if status_code and int(status_code) < 400:
+                    error = False
+
+                # Analyze response
+                attack = self.check_outbound_attacks(response_content, request_path, source_ip, timestamp, error)
+            
+            if attack:
+                self.handle_attack(attack, host, request_path, source_ip, timestamp)
+                response = {
+                    'statusCode': self.DENY_STATUS_CODE,
+                    'body': json.dumps(self.GTFO_MSG)
+                }
+
+            
+
+            return response
+            
+        return decorator
+    
+    ####################################################
+    # LOGGING
+    ####################################################
+
+    def log_security_event(self, event_type, source_ip, user = None, details = {}):
+
+        log_data = make_security_log(self.APP_NAME, event_type, source_ip, self.LOG_FORMAT, user, details, False)
+        
+        webhook = False
+        syslog_udp = False
+        syslog_tcp = False
+
+        if self.LOG_FORMAT.lower() in ['json', 'pcb']:
+            path = self.LOG_PATH
+            if not path.startswith('/'):
+                path = '/'+path
+            server_url = f'{self.LOG_PROTOCOL.lower()}://{self.LOG_SERVER}:{self.LOG_PORT}{path}'
+            webhook = True
+
+        elif self.LOG_FORMAT.lower() == 'syslog':
+            if self.LOG_PROTOCOL.lower() == 'udp':
+                syslog_udp = True
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            elif self.LOG_PROTOCOL.lower() == 'tcp':
+                syslog_tcp = True
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        try:
+            if webhook:
+                requests.post(server_url, json=log_data, timeout=1) 
+            elif syslog_udp:
+                sock.sendto(log_data.encode(), (self.LOG_SERVER, self.LOG_PORT))
+            elif syslog_tcp:
+                sock.connect((self.LOG_SERVER, self.LOG_PORT))
+                sock.settimeout(1)
+                sock.send(log_data)
+                sock.close()
+
+        except:
+            pass
+
+
+    ####################################################
+    # PARAMS & VECTORS
+    ####################################################
+
+    def get_params(self, request):
+
+        (host, request_method, request_path, source_ip, timestamp) = ('', '', '', '', time.time())
+
+
+        context = request.get('requestContext')
+
+        if context:
+
+            host = context.get('domainName')
+
+            if context.get('http'):
+                http = context['http']
+                request_path = http.get('path')
+                request_method = http.get('method')
+                source_ip = http.get('sourceIp')
+
+            else:
+                request_path = request.get('path')
+                request_method = request.get('httpMethod')
+                if context and context.get('identity'):
+                        source_ip = context['identity'].get('sourceIp')
+
+        return (host, request_method, request_path, source_ip, timestamp)
+    
+    def get_query_string(self, request):
+
+        query_string = request.get('multiValueQueryStringParameters')
+
+        if query_string is None:
+
+            query_string = {}
+
+            qs_data = request.get('queryStringParameters')  or {}
+            
+            for qs_variable in qs_data:
+                query_string[qs_variable] = [ qs_data[qs_variable] ]
+
+        return query_string
+    
+    def get_posted_data(self, request):
+
+        posted_data = {}
+
+        posted_data_full = request.get('body') or ''
+
+        posted_data_parts = posted_data_full.split('&')
+
+        for posted_data_part in posted_data_parts:
+            posted_data_tuple = posted_data_part.split('=')
+            if len(posted_data_tuple) == 2:
+                post_variable = posted_data_tuple[0]
+                post_value = posted_data_tuple[1]
+
+                if not post_variable in posted_data:
+                    posted_data[post_variable] = []
+
+                posted_data[post_variable].append(post_value)
+
+        return posted_data
+    
+    def get_request_path(self, request):
+        
+        request_path = ''
+
+        context = request.get('requestContext')
+
+        if context:
+
+            if context.get('http'):
+                http = context['http']
+                request_path = http.get('path')
+
+            else:
+                request_path = request.get('path')
+
+        return request_path
+    
+    def get_json_data(self, request):
+
+        json_keys = []
+        json_values = []
+
+        try:
+            json_data = json.loads(request['body'])
+            (json_keys, json_values) = self.analyze_json(json_data)
+        except:
+            pass
+
+        return (json_keys, json_values)
+    
+    def get_request_headers(self, request):
+
+        headers = request.get('headers') or {}
+
+        return headers
+        
+
+    
+        
+

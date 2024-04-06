@@ -1,3 +1,5 @@
 dist/
 __pycache__/
 pyrasp.egg-info/
+venv/
+lambda/

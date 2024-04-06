@@ -1,6 +1,6 @@
 [project]
 name = "pyrasp"
-version = "0.5.1"
+version = "0.6.0"
 authors = [
     { name = "Renaud Bidou", email = "renaud@paracyberbellum.io" }
 ]
@@ -12,7 +12,9 @@ keywords = [ "rasp", "web application", "security", "xss", "sql injection", "waf
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python",
-  "Framework :: Flask"
+  "Framework :: Flask",
+  "Framework :: Django",
+  "Framework :: FastAPI"
 ]
 dependencies = [
   "sqlparse", 

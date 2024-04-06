@@ -1,0 +1,12 @@
+v0.6.0 =======================
+> New features
+- Python AWS Lambda functions support
+
+> Improvements
+- Option to disable source IP country resolution in logs
+- Configuration file can be set by environment variable
+- Table of content and hyperlinks in the documentation
+- Offending source IP coutry resolution in logs is now optional (default to enabled for backward compatibility)
+
+> Bug fix
+- Offending source IPs were blackisted event if the SECURITY_CHECKS value was set to 1 (Enabled, no Blacklisting)

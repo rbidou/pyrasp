@@ -1,7 +1,7 @@
-# Python RASP
+<span style="font-size:2em;font-weight:bold">Python RASP</span>
 
 <p>
-    <img src="https://img.shields.io/badge/Version-0.5.1-green?style=for-the-badge" alt="version 0.5.1"/>
+    <img src="https://img.shields.io/badge/Version-0.6.0-green?style=for-the-badge" alt="version 0.6.0"/>
     <a href="https://www.paracyberbellum.io">
         <img src="https://img.shields.io/badge/A%20project%20by-ParaCyberBellum-blue?style=for-the-badge" alt="A project by ParaCyberBellum"/>
     </a>
@@ -10,13 +10,83 @@
     </a>
 </p>
 
-## Overview
+> Check [PyRASP Release Notes](https://github.com/rbidou/pyrasp/blob/main/RELEASE-NOTES.txt)
+
+- [0. Overview](#0-overview)
+  - [Security Modules](#security-modules)
+  - [Supported Frameworks](#supported-frameworks)
+- [1. Install](#1-install)
+  - [From PyPi (Recommended)](#from-pypi-recommended)
+  - [From Source](#from-source)
+  - [AWS Lambda](#aws-lambda)
+- [2. Run](#2-run)
+  - [Classes](#classes)
+  - [Flask \& FastAPI](#flask--fastapi)
+    - [Guidelines](#guidelines)
+    - [Examples](#examples)
+  - [Django](#django)
+    - [Guidelines](#guidelines-1)
+    - [Examples](#examples-1)
+  - [AWS Lambda](#aws-lambda-1)
+    - [Guidelines](#guidelines-2)
+    - [Examples](#examples-2)
+  - [Environment Variables](#environment-variables)
+  - [Startup](#startup)
+- [3. Configuration](#3-configuration)
+  - [Example File](#example-file)
+  - [Parameters](#parameters)
+    - [Generic Parameters Table](#generic-parameters-table)
+    - [Default ignore paths](#default-ignore-paths)
+    - [Default decoy paths](#default-decoy-paths)
+  - [Specific Parameters Values](#specific-parameters-values)
+    - [`SECURITY_CHECKS`](#security_checks)
+    - [Default security checks values](#default-security-checks-values)
+    - [`VERBOSE`](#verbose)
+- [4. Event Logs Format](#4-event-logs-format)
+  - [Logs Data](#logs-data)
+  - [JSON Logs](#json-logs)
+  - [Syslog Logs](#syslog-logs)
+  - [Attack Types](#attack-types)
+  - [Payload Locations](#payload-locations)
+- [5. Cloud Operations](#5-cloud-operations)
+  - [Run](#run)
+    - [Flask \& FastAPI](#flask--fastapi-1)
+    - [Django](#django-1)
+    - [AWS Lambda](#aws-lambda-2)
+    - [Environment Variables](#environment-variables-1)
+  - [Configuration download](#configuration-download)
+    - [Overview](#overview)
+    - [Format](#format)
+    - [Configuration example](#configuration-example)
+- [6. Status, Telemetry, Configuration \& Blacklist updates](#6-status-telemetry-configuration--blacklist-updates)
+  - [Configuration](#configuration)
+  - [Request format](#request-format)
+  - [Response format](#response-format)
+    - [Configuration updates](#configuration-updates)
+    - [Blacklist updates](#blacklist-updates)
+- [7. Addendum: AWS Lambda Specificities](#7-addendum-aws-lambda-specificities)
+  - [Settings](#settings)
+    - [Memory](#memory)
+  - [Timeout](#timeout)
+  - [Limitations](#limitations)
+    - [Function code size](#function-code-size)
+    - [Beacons](#beacons)
+    - [Configuration update](#configuration-update)
+    - [Latency](#latency)
+    - [Logs](#logs)
+  - [The PyRASP Layer](#the-pyrasp-layer)
+    - [Content](#content)
+    - [Available Layers](#available-layers)
+- [8. Contacts](#8-contacts)
+
+# 0. Overview
 `pyrasp` is a **Runtime Application Self Protection** package for Python-based Web Servers. It protects against the main attacks web applications are exposed to, from within the application. It is also capable of providing basic telemetry such as cpu and memory usage and requests count.
 
 It can operate using a local configuration file or get it from a remote/cloud server. Logs and telemetry (optional) can be sent to remote servers as well, and threats information can be shared across agents.
 
 One specificity of `pyrasp` relies on the fact that it does not use signatures. Instead it will leverage decoys, thresholds, system and application internals, machine learning and grammatical analysis.
 
+## Security Modules
 Security modules, technology, and operations are provided in the table below.
 | Module | Technology | Function |
 | - | - | - |
@@ -32,34 +102,47 @@ Security modules, technology, and operations are provided in the table below.
 | Data Leak Prevention | Regexp | Blocks outgoing sensible data |
 
 ## Supported Frameworks
-`pyrasp` 0.5.x supports Flask, FastAPI and Django
+`pyrasp` 0.6.x supports Flask, FastAPI, Django and Python AWS Lambda functions
 
 > **IMPORTANT** FastAPI support requires `starlette` >= 0.28.0
 
-## Install
-### From PyPi (Recommended)
+# 1. Install
+
+> See specific section for AWS Lambda functions
+
+## From PyPi (Recommended)
 ```
 pip install pyrasp
 ```
-### From Source
+## From Source
 ```
 git clone https://github.com/rbidou/pyrasp
 cd pyrasp
 pip install -r requirements.txt
 ```
-## Run
 
-### Classes
+## AWS Lambda
+You need to add a specific layer to your AWS function. This layer contains the `pyrasp` library as well as all the required dependencies.
+(See related [AWS Lambda documentation](https://docs.aws.amazon.com/lambda/latest/dg/adding-layers.html))
+
+Select a custom layer and specify the ARN: `arn:aws:lambda:eu-west-1:359790667553:layer:PyRASP-full-0.6.0:1`
+
+> Seceral options are available for the layers, see [Available Layers](#available-layers)
+
+# 2. Run
+
+## Classes
 
 | Framework | `rasp_class` | Note |
 | - | - | - |
 | Flask | FaskRASP | |
 | FastAPI | FastApiRASP | **IMPORTANT** Requires starlette >= 0.28.0 |
 | Django | DjangoRASP | |
+| AWS Lambda | LambdaRASP | See (Addendum)[#7-addendum-aws-lambda-specificities] for limitations & specificities |
 
-### Flask & FastAPI
+## Flask & FastAPI
 
-**Guidelines**
+### Guidelines
 
 `pyrasp` requires 2 lines of code to run.
 
@@ -72,9 +155,11 @@ pip install -r requirements.txt
 
 <ins>Cloud Agent</ins>
 
+> See [Cloud Operations](#cloud-operations) section for details
+
 `<rasp_class>(<framework_instance>, cloud_url = <configuration_url>, key = <agent_key>)`
 
-**Examples**
+### Examples
 
 ```python
 from pyrasp.pyrasp import FlaskRASP
@@ -86,17 +171,18 @@ FlaskRASP(app, conf = 'rasp.json')
 ```python
 from pyrasp.pyrasp import FastApiRASP
 app = FastAPI()
-rasp = FastApiRASP(app, cloud_url = 'https://pyrasp.my.org/config', key = '000000-1111-2222-3333-44444444' )
+rasp = FastApiRASP(app, cloud_url = 'https://pyrasp.my.org/config', key = '000000-1111-2222-3333-44444444')
 ```
 
-### Django
+## Django
 
-**Guidelines**
+### Guidelines
 
 The `pyrasp` class must be added to the `MIDDLEWARE` variable in the `settings.py` file of the Django application.
 A `PYRASP_CONF` variable must be added to the same file. It contains the path of the configuration file.
+For cloud deployment `PYRASP_CLOUD_URL` and `PYRASP_KEY` variables must be set. (See [Cloud Operations](#cloud-operations) section for details)
 
-**Examples**
+### Examples
 
 ```python
 PYRASP_CONF = 'rasp.json'
@@ -117,11 +203,51 @@ MIDDLEWARE = [
 ]
 ```
 
+## AWS Lambda
+
+### Guidelines
+
+The `pyrasp` module must be imported `from pyrasp.pyrasp import <rasp_class>`.
+
+A decorator must be added on top of the lambda function handler.
+
+<ins>Local Agent</ins>
+
+`@LambdaRASP(conf = <configuration_file>)`
+
+
+<ins>Cloud Agent</ins>
+
+> See [Cloud Operations](#cloud-operations) section for details
+
+`@LambdaRASP(cloud_url = <configuration_url>, key = <agent_key>)`
+
+### Examples
+
+```python
+@LambdaRASP(conf = 'rasp.json').register
+def lambda_handler(event, context):
+...
+```
+
+```python
+@LambdaRASP(cloud_url = 'https://pyrasp.my.org/config', key = '000000-1111-2222-3333-44444444').register
+def lambda_handler(event, context):
+...
+```
+
+## Environment Variables
+
+`cloud_url`, `key` and `conf` values can be set as environment variables:
+- `PYRASP_CLOUD_URL`: URL to retrieve agent configuration from
+- `PYRASP_KEY`: unique key to identify the agent 
+- `PYRASP_CONF`: configuration file path
+
 ## Startup
 At startup of the application `pyrasp` loading information is displayed.
 
 ```
-### PyRASP v0.5.1 ##########
+### PyRASP v0.6.0 ##########
 [+] Starting PyRASP
 [+] Loading configuration from rasp.json
 [+] XSS model loaded
@@ -130,12 +256,12 @@ At startup of the application `pyrasp` loading information is displayed.
 ############################
 ```
 
-## Configuration
+# 3. Configuration
 Configuration is set from a JSON file.
 > `pyrasp` first loads default values and overwrite data from configuration.
 
 > If configuration is loaded from a remote server, the response body to the request should be a JSON containing a valid pyrasp configuration file as described below.
-### Example File
+## Example File
 ```json
 {
     "HOSTS" : ["mysite.mydomain.com"],
@@ -203,6 +329,7 @@ Configuration is set from a JSON file.
     "LOG_PORT": 514,    
     "LOG_PROTOCOL": "UDP",
     "LOG_PATH": "",
+    "RESOLBVE_COUNTRY": false,
 
     "CHANGE_SERVER": true,
     "SERVER_HEADER": "Apache",
@@ -214,17 +341,17 @@ Configuration is set from a JSON file.
     "BEACON_DELAY": 30
 }
 ```
-### Parameters
-**Generic Parameters Table**
+## Parameters
+### Generic Parameters Table
 | Parameter | Type | Values | Default | Usage |
 | - | - | - | - | - |
 | `HOSTS` | list of strings | any | `[]` | List of valid 'Host' headers checked for spoofing detection |
 | `APP_NAME` | string | any | `["Web Server"]` | Identification of the web application in the logs |
 | `GTFO_MSG` | string | any | `["Blocked"]` | Message displayed when request is blocked. HTML page code is authorized |
 | `DENY_STATUS_CODE` | integer | any | `403` | HTTP status code sent in response to blocked requests | 
-| `VERBOSE` | integer | any | `0` | Verbosity level - *see "Specific Parameters Values" section below* |
+| `VERBOSE` | integer | any | `0` | Verbosity level - See [Specific Parameters Values](#specific-parameters-values) |
 | `DECODE_B64` | boolean | true, false | `true` | Decode Base64-encoded payloads |
-| `SECURITY_CHECKS` | integer |  0, 1, 2, 3 | see below | Security modules status - *see "Specific Parameters Values" section below*  |
+| `SECURITY_CHECKS` | integer |  0, 1, 2, 3 | see below | Security modules status - See [Specific Parameters Values](#specific-parameters-values)  |
 | `WHITELIST` | list of strings | any | `[]` | Whitelisted source IP addresses |
 | `IGNORE_PATHS` | list of regexp | any | see below |Paths to which requests will entirely bypass security checks including blacklist |
 | `BRUTE_AND_FLOOD_PATH` | list of regexp | any | `["^/"]` | Paths for which flood and brute force threshold will be enabled |
@@ -246,20 +373,21 @@ Configuration is set from a JSON file.
 | `DLP_WINDOWS_CREDS` | boolean | true, false | `false` | Check Windows credentials leak |
 | `DLP_LINUX_CREDS` | boolean | true, false | `false` | Check Linux credentials leak |
 | `LOG_ENABLED` | boolean | true, false | `false` | Enable event logging |
-| `LOG_FORMAT` | string | syslog, json | `"syslog"` | Format of event log - *see "Event Logs Format" section below* |
+| `LOG_FORMAT` | string | syslog, json | `"syslog"` | Format of event log - see [Event Logs Format](#4-event-logs-format) |
 | `LOG_SERVER` | string | any | `"127.0.0.1"` | Log server IP address or FQDN |
 | `LOG_PORT` | integer | 1 - 36635 | `514` | Log server port |
 | `LOG_PROTOCOL` | string | tcp, udp, http, https | `"udp"` | Log server protocol (tcp or udp for syslog, http or https for json) |
 | `LOG_PATH` | string | any | `""` | URL path to use for http(s) log webhook (ex: /logs) |
+| `RESOLVE_COUNTRY` | boolean | true, false | `true` | Resolve country of attack source IP address |
 | `CHANGE_SERVER` | boolean | true, false | `true` | Change response "Server" header |
 | `SERVER_HEADER` | string | any | `"Apache"` | Message displayed when request is blocked. HTML page code is authorized |
 
-**Default ignore paths**
+### Default ignore paths
 ```json
 "IGNORE_PATHS" : ["^/favicon.ico$","^/robots.txt$","^/sitemap\\.(txt|xml)$"]
 ```
 
-**Default decoy paths**
+### Default decoy paths
 ```json
 "DECOY_ROUTES" : [ 
         "/admin", "/login", "/logs", "/version",    
@@ -273,15 +401,15 @@ Configuration is set from a JSON file.
     ]
 ```
 
-### Specific Parameters Values
-**`SECURITY_CHECKS`**
+## Specific Parameters Values
+### `SECURITY_CHECKS`
 | Value | Usage |
 | - | - |
 | 0 | Disabled |
 | 1 | Enabled, no Blacklisting |
 | 2 | Enabled, Blacklisting activated |
 
-**Default security checks values**
+### Default security checks values
 | Parameter | Function | Default Value |
 | - | - | - |
 | `flood` | Flood & Brute Force | 2 |
@@ -297,26 +425,26 @@ Configuration is set from a JSON file.
 
 > Note: `spoofing` module refers to "Host" header validation
 
-**`VERBOSE`**
+### `VERBOSE`
 | Value | Messages displayed |
 | - | - |
 | 0 | Start, Stop, Configuration load status |
 | 10+ | Configuration loading details, XSS model load status, Logging process status, Attacks detection |
 | 100+ | Configuration details |
 
-## Event Logs Format
-### Parameters
+# 4. Event Logs Format
+## Logs Data
 | Parameter | Format | Detail |
 | - | - | - |
 | `<event_time>` | %Y/%m/%d %H:%M:%S | Time on the system running `pyrasp` |
 | `<application_name>` | string | Value of the `APP_NAME` parameter |
-| `<event_type>` | string | Type of attack - *see "Attack Types" section below* |
+| `<event_type>` | string | Type of attack - see (Attack Types)[#attack-types] section below |
 | `<source_ip>` | string | IP address of the attack source |
-| `<country>` | string | Country of the source address ("Private" if internal network) |
-| `<location>` | string | Location of the offending payload - *see "Payload Locations" section below* |
+| `<country>` | string | Country of the source address ("Private" if internal network), requires `RESOLVE_COUNTRY` option set |
+| `<location>` | string | Location of the offending payload - See (Payload Locations)[#payloads-locations] section below |
 | `<payload>` | string | Suspicious payload (base64 decoded) |
 
-### JSON Logs
+## JSON Logs
 ```json
 {
     "time": "<event_time>",
@@ -333,12 +461,12 @@ Configuration is set from a JSON file.
 }
 ```
 
-### Syslog Logs
+## Syslog Logs
 ```
 [<event_time>] "<application_name>" - "<event_type>" - "<source_ip>" - "<country>" - "<location>:<payload>"
 ```
 
-### Attack Types
+## Attack Types
 | Value | Attack Type |
 | - | - |
 | `blacklist`| Blacklisted IP |
@@ -354,7 +482,7 @@ Configuration is set from a JSON file.
 | `headers` | Forbidden Header |
 | `dlp` | Data Leak Prevention |
 
-### Payload Locations
+## Payload Locations
 | Value | Location |
 | - | - |
 | `source_ip` | Source IP |
@@ -374,7 +502,7 @@ Configuration is set from a JSON file.
 | `json_values` | JSON key value |
 | `content` | Response content |
 
-## Cloud Operations
+# 5. Cloud Operations
 `pyrasp` is capable to operate in a 'cloud' environment:
 - Retrieve initial configuration and updates from remote server
 - Retrieve Blacklist from remote server at startup
@@ -383,9 +511,9 @@ Configuration is set from a JSON file.
 - Share new blacklisted entries
 - Update blacklist with new entries provided by remote server
 
-### Run
+## Run
 
-**Flask & FastAPI**
+### Flask & FastAPI
 
 `pyrasp` instance creation requires 2 specific arguments:
 - `cloud_url`: URL to retrieve agent configuration from
@@ -393,7 +521,7 @@ Configuration is set from a JSON file.
 
 `<rasp_class>(<framework_instance>, cloud_url = <configuration_url>, key = <agent_key>)`
 
-> Those 2 parameters can be set as environment vaiables (see below)
+> Those 2 parameters can be set as environment vaiables  - see [Environment Variables](#environment-variables-1)
 
 
 ```python
@@ -402,7 +530,7 @@ app = FastAPI()
 rasp = FastApiRASP(app, cloud_url = 'https://pyrasp.my.org/config', key = '000000-1111-2222-3333-44444444' )
 ```
 
-**Django**
+### Django
 
 For cloud agents, `PYRASP_CLOUD_URL` and `PYRASP_KEY` variables must be added to the `settings.py` file of the Django application:
 - `PYRASP_CLOUD_URL` contains the URL to retrieve agent configuration from
@@ -419,23 +547,39 @@ MIDDLEWARE = [
 ]
 ```
 
-**Environment Variables**
+### AWS Lambda
+
+`pyrasp` instance creation requires 2 specific arguments:
+- `cloud_url`: URL to retrieve agent configuration from
+- `key`: unique key to identify the agent 
+
+`@LambdaRASP(cloud_url = <configuration_url>, key = <agent_key>)`
+
+> Those 2 parameters can be set as environment variables - see [Environment Variables](#environment-variables-1)
+
+```python
+@LambdaRASP(cloud_url = 'https://pyrasp.my.org/config', key = '000000-1111-2222-3333-44444444').register
+def lambda_handler(event, context):
+...
+```
+
+### Environment Variables
 
 `cloud_url` and `key` values can be set as environment variables:
 - `PYRASP_CLOUD_URL`: URL to retrieve agent configuration from
 - `PYRASP_KEY`: unique key to identify the agent 
 
-### Configuration download
-**Overview**
+## Configuration download
+### Overview
 
 Configuration file and blacklist are retrieved by the agent through a `GET` request to the URL specified.
 
 At agent startup the remote configuration URL is displayed.
 ```
-### PyRASP v0.5.1 ##########
+### PyRASP v0.6.0 ##########
 [+] Starting PyRASP
 [+] Loading default configuration
-[+] Loading configuration from http://192.168.0.10/rasp/connect
+[+] Loading configuration from http://pyrasp.my.org/config
 [+] XSS model loaded
 [+] SQLI model loaded
 [+] Starting logging process
@@ -444,16 +588,16 @@ At agent startup the remote configuration URL is displayed.
 ############################
 ```
 
-**Format**
+### Format
 
 The response to the request **MUST** be an `application/json` body containing the configuration.
 <br>The data structure **MUST** be a dictionary (`{}`)
 
 The JSON configuration **MUST** be provided in the `config` key.
 <br>Optionaly an initial blacklist can be provided as a dictionary structure in the `blacklist` key of the response.
-<br>The blacklist structure **MUST** comply with the format detailed in teh example below.
+<br>The blacklist structure **MUST** comply with the format detailed in the example below.
 
-**Configuration example**
+### Configuration example
 
 ```json
 {
@@ -471,12 +615,12 @@ The JSON configuration **MUST** be provided in the `config` key.
 }
 ```
 
-## Status, Telemetry, Configuration & Blacklist updates
-### Configuration
+# 6. Status, Telemetry, Configuration & Blacklist updates
+## Configuration
 Agent can be configured to regularly send status, telemetry and new blacklist entries to a remote server. 
 
 This feature is enabled by setting the `BEACON` configuration parameter to `true`.
-<br>The `BEACON_URL` parameter **must** be set. It defines the URL to which beacon requests will be sent.
+<br>The `BEACON_URL` parameter **MUST** be set. It defines the URL to which beacon requests will be sent.
 <br>The number of seconds between 2 beacon requests is defined by the `BEACON_DELAY` parameter. The default value ios set to `30` seconds.
 
 If the `TELEMETRY_DATA` parameter is set to `true` cpu and memory average usage, as well as the count of succesfull, error and attack requests are sent to the remote server.
@@ -492,7 +636,7 @@ The parameters to be set in the configuration files are listed in the table belo
 | `TELEMETRY_DATA` | boolean | true, false | `false` | Add telemetry data (cpu, memory, request count) to status beacon |
 | `BLACKLIST_SHARE` | boolean | true, false | `false` | Share blacklist entries with other agents (cloud only) |
 
-### Request format
+## Request format
 Data is sent to the remote server as a `POST` request to the URL provided in the `BEACON_URL` configuration parameter. Body of the request is a JSON structure detailed below.
 
 1. Default beacon request
@@ -534,13 +678,13 @@ Data is sent to the remote server as a `POST` request to the URL provided in the
 }
 ```
 
-### Response format
+## Response format
 Response to beacon requests **MUST** be in an `application/json` format. 
 <br>The data structure **MUST** be a dictionary (`{}`)
 - If a configuration update is required, it **MUST** be located in the `config` key
 - If a Blacklist update is required,  it **MUST** be located in the `blacklist` key
 
-**Configuration updates**
+### Configuration updates
 
 Configuration updates **MUST** be provided in the `config` key of the response data structure, containing the new configuration.
 
@@ -556,7 +700,7 @@ Configuration updates **MUST** be provided in the `config` key of the response d
 }
 ```
 
-**Blacklist updates**
+### Blacklist updates
 
 Blacklist updates **MUST** be provided in a structure located in the `blacklist` key of the beacon response.
 <br>The structure **MUST** contain 2 keys:
@@ -572,8 +716,77 @@ Blacklist updates **MUST** be provided in a structure located in the `blacklist`
 }
 ```
 
+# 7. Addendum: AWS Lambda Specificities
 
-## Contacts
+Due to AWS Lambda concept of ephemeral containers, `pyrasp` behavior is slighlty different and has a few limitations compared to other platforms.
+<br>Specific settings must also be applied in the Lambda function configuration.
+
+## Settings
+
+> Machine Learning engines are quite resource intensive and require specific configuration settings
+
+### Memory
+`pyrasp` requires additional memory to run with the lambda function. This is mostly due to the machine learning engines (and related libraries) used for XSS and SQL Injection detection. 
+<br>If XSS or SQL Injection detections are enabled, an **additional 165MB of memory** must be added to the Lambda function configuration. (See related [AWS Lambda documentation](https://docs.aws.amazon.com/lambda/latest/dg/configuration-memory.html))
+
+## Timeout
+The `pyrasp` XSS and SQL Injection machine learning engines are loaded at the Lambda function startup, noticeably increasing the overall startup time (~5 seconds).
+<br>If XSS or SQL Injection detections are enabled, the Lambda function timeout must be increased by **minimum 5 seconds** (See related [AWS Lambda documentation](https://docs.aws.amazon.com/lambda/latest/dg/configuration-timeout.html))
+
+## Limitations
+
+### Function code size
+AWS Lambda total code size (including layers) has a limit of 250MB. PyRASP layer size is 80MB, limiting the rest of the function code to 170MB.
+
+### Beacons
+Beacon is implemented in a different way for in `pyrasp` for Lambda functions for 2 reasons: multithreading is not supported and containers are ephemeral.
+
+Consequently beacons are sent in 2 specific cases:
+- At agent startup
+- When a request is received and the last beacon was sent in a time period graeter than the value specified in the `BEACON_DELAY`  parameter
+
+Therefore, on low traffic functions, monitoring may report agents as down while they remain active (but didn't process any request in the `BEACON_DELAY` timeframe).
+
+### Configuration update
+In cloud deployment, configuration is dynamically updated via beacons responses. As beacons are not implemented in `pyrasp` for Lambda functions (see above) configurations are only updated at the lambda function startup.
+
+### Latency
+With all security modules enabled, the processing of a request doesn't add noticeable latency.
+<br>However, when the lambda instance is in "cold" state (meaning the container needs to be restarted), the processing of the request requires restart of the `pyrasp` module. This adds about 5 seconds latency to the global processing if the request.
+
+### Logs
+As threads are not supported in AWS Lambda environment, country of source IP is not resolved, this prevents from additional latency in the requests processing. The field in logs is set to an empty string. 
+
+## The PyRASP Layer
+
+### Content
+The AWS Lambda layer required to run the `pyrasp` module is about 80 MB size and contains the modules listed below.
+- sqlparse
+- scikit-learn==1.3.0
+- requests
+- psutil
+- certifi
+- charset_normalizer
+- idna
+- joblib
+- numpy
+- scikit-learn
+- scipy
+- urllib3
+- threadpoolctl
+- pyrasp
+
+If some modules are already loaded from another layer, it is possible to rebuild a custom PyRASP layer to lower its size (See related [AWS Lambda documentation](https://docs.aws.amazon.com/lambda/latest/dg/python-package.html#python-package-create-dependencies)).
+
+### Available Layers
+Several layers are made available to allow custom deployment. 
+<br>It is strongly recommended to use the latest version, at least in the beta stage (version 0.x.x). But is up to you...
+| Name | Version | Size | Comments | ARN |
+| - | - | - | - | - |
+| PyRASP-Full-0-6-0 | 0.6.0 | 80 MB | PyRASP module and full dependencies | `arn:aws:lambda:eu-west-1:359790667553:layer:PyRASP-Full-0.6.0:1` |
+| PyRASP-0-6-0 | 0.6.0 | 750 kB | PyRASP module, no dependencies | `arn:aws:lambda:eu-west-1:359790667553:layer:PyRASP-0.6.0:1` |
+
+# 8. Contacts
 Renaud Bidou - renaud@paracyberbellum.io
 
 

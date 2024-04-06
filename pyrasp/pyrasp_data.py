@@ -172,6 +172,7 @@ DEFAULT_CONFIG = {
     "LOG_PORT": 514,
     "LOG_PROTOCOL": "UDP",
     "LOG_PATH": "",
+    "RESOLVE_COUNTRY": True,
 
     "CHANGE_SERVER": True,
     "SERVER_HEADER": "Apache",
