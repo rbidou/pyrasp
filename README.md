@@ -71,7 +71,6 @@
   - [Limitations](#limitations)
     - [Function code size](#function-code-size)
     - [Beacons](#beacons)
-    - [Configuration update](#configuration-update)
     - [Latency](#latency)
     - [Logs](#logs)
   - [The PyRASP Layer](#the-pyrasp-layer)
@@ -745,9 +744,6 @@ Consequently beacons are sent in 2 specific cases:
 - When a request is received and the last beacon was sent in a time period graeter than the value specified in the `BEACON_DELAY`  parameter
 
 Therefore, on low traffic functions, monitoring may report agents as down while they remain active (but didn't process any request in the `BEACON_DELAY` timeframe).
-
-### Configuration update
-In cloud deployment, configuration is dynamically updated via beacons responses. As beacons are not implemented in `pyrasp` for Lambda functions (see above) configurations are only updated at the lambda function startup.
 
 ### Latency
 With all security modules enabled, the processing of a request doesn't add noticeable latency.
