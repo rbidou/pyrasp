@@ -262,81 +262,83 @@ Configuration is set from a JSON file.
 ## Example File
 ```json
 {
-    "HOSTS" : ["mysite.mydomain.com"],
-    "APP_NAME" : "Web Server",
-    "GTFO_MSG" : "<html><head /><body><h1>You have been blocked</h1></body></html>",
-    "DENY_STATUS_CODE": 403,
-
-    "VERBOSE" : 10,
-    "DECODE_B64" : true,
-
-    "SECURITY_CHECKS" : {
-        "path": 2,
-        "headers": 2,
-        "flood": 2,
-        "spoofing": 2,
-        "decoy": 2,
-        "sqli": 2,
-        "xss": 2,
-        "hpp": 2,
-        "command": 2,
-        "dlp": 2
-    },    
-
-    "WHITELIST": [],
-
-    "IGNORE_PATHS" : ["^/css","^/js","^/img"],
-
-    "BRUTE_AND_FLOOD_PATHS" : ["^/"],
-    "FLOOD_DELAY" : 60,
-    "FLOOD_RATIO" : 50,
-    "ERROR_FLOOD_DELAY" : 10,
-    "ERROR_FLOOD_RATIO" : 100,
-
-    "BLACKLIST_DELAY" : 3600,
-    "BLACKLIST_OVERRIDE" : false,
-
-    "DECOY_ROUTES" : [ 
-        "/admin", "/login", "/logs", "/version",    
-        "/cgi-bin/",                                
-        "/remote/",                                 
-        "/.env",                                    
-        "/owa/",                                    
-        "/autodiscover", "/Autodiscover",           
-        "/.git/",                                   
-        "/.aws/ ",
-        "/.well-known/"                                 
-    ],
-
-    "XSS_PROBA" : 0.80,
-    "MIN_XSS_LEN": 16,
-
-    "SQLI_PROBA" : 0.725,
-    "MIN_SQLI_LEN": 8,
-
-    "DLP_PHONE_NUMBERS": false,
-    "DLP_CC_NUMBERS": false,
-    "DLP_PRIVATE_KEYS": false,
-    "DLP_HASHES": false,
-    "DLP_WINDOWS_CREDS": false,
-    "DLP_LINUX_CREDS": false,
-
-    "LOG_ENABLED": false,
-    "LOG_FORMAT": "Syslog",
-    "LOG_SERVER": "127.0.0.1",        
-    "LOG_PORT": 514,    
-    "LOG_PROTOCOL": "UDP",
-    "LOG_PATH": "",
-    "RESOLBVE_COUNTRY": false,
-
-    "CHANGE_SERVER": true,
-    "SERVER_HEADER": "Apache",
-
-    //-- Cloud Operations --//
-    "BEACON": false,
-    "TELEMETRY_DATA": false,
-    "BEACON_URL": "",
-    "BEACON_DELAY": 30
+    "config": {
+        "HOSTS" : ["mysite.mydomain.com"],
+        "APP_NAME" : "Web Server",
+        "GTFO_MSG" : "<html><head /><body><h1>You have been blocked</h1></body></html>",
+        "DENY_STATUS_CODE": 403,
+    
+        "VERBOSE" : 10,
+        "DECODE_B64" : true,
+    
+        "SECURITY_CHECKS" : {
+            "path": 2,
+            "headers": 2,
+            "flood": 2,
+            "spoofing": 2,
+            "decoy": 2,
+            "sqli": 2,
+            "xss": 2,
+            "hpp": 2,
+            "command": 2,
+            "dlp": 2
+        },    
+    
+        "WHITELIST": [],
+    
+        "IGNORE_PATHS" : ["^/css","^/js","^/img"],
+    
+        "BRUTE_AND_FLOOD_PATHS" : ["^/"],
+        "FLOOD_DELAY" : 60,
+        "FLOOD_RATIO" : 50,
+        "ERROR_FLOOD_DELAY" : 10,
+        "ERROR_FLOOD_RATIO" : 100,
+    
+        "BLACKLIST_DELAY" : 3600,
+        "BLACKLIST_OVERRIDE" : false,
+    
+        "DECOY_ROUTES" : [ 
+            "/admin", "/login", "/logs", "/version",    
+            "/cgi-bin/",                                
+            "/remote/",                                 
+            "/.env",                                    
+            "/owa/",                                    
+            "/autodiscover", "/Autodiscover",           
+            "/.git/",                                   
+            "/.aws/ ",
+            "/.well-known/"                                 
+        ],
+    
+        "XSS_PROBA" : 0.80,
+        "MIN_XSS_LEN": 16,
+    
+        "SQLI_PROBA" : 0.725,
+        "MIN_SQLI_LEN": 8,
+    
+        "DLP_PHONE_NUMBERS": false,
+        "DLP_CC_NUMBERS": false,
+        "DLP_PRIVATE_KEYS": false,
+        "DLP_HASHES": false,
+        "DLP_WINDOWS_CREDS": false,
+        "DLP_LINUX_CREDS": false,
+    
+        "LOG_ENABLED": false,
+        "LOG_FORMAT": "Syslog",
+        "LOG_SERVER": "127.0.0.1",        
+        "LOG_PORT": 514,    
+        "LOG_PROTOCOL": "UDP",
+        "LOG_PATH": "",
+        "RESOLBVE_COUNTRY": false,
+    
+        "CHANGE_SERVER": true,
+        "SERVER_HEADER": "Apache",
+    
+        //-- Cloud Operations --//
+        "BEACON": false,
+        "TELEMETRY_DATA": false,
+        "BEACON_URL": "",
+        "BEACON_DELAY": 30
+    }
 }
 ```
 ## Parameters
