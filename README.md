@@ -1,4 +1,4 @@
-<p style="font-size:2em;font-weight:bold">Python RASP</p>
+<h1>Python RASP</h1>
 
 <p>
     <img src="https://img.shields.io/badge/Version-0.6.0-green?style=for-the-badge" alt="version 0.6.0"/>
