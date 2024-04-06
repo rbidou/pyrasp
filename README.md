@@ -122,12 +122,11 @@ pip install -r requirements.txt
 ```
 
 ## AWS Lambda
-You need to add a specific layer to your AWS function. This layer contains the `pyrasp` library as well as all the required dependencies.
-(See related [AWS Lambda documentation](https://docs.aws.amazon.com/lambda/latest/dg/adding-layers.html))
+You need to add a specific layer to your AWS function. See related [AWS Lambda documentation](https://docs.aws.amazon.com/lambda/latest/dg/adding-layers.html).
+<br>During the layer installation, select "Custom Layer".
+<br>Several options are available for the layers, see [Available Layers](https://github.com/rbidou/pyrasp/blob/main/LAMBDA-LAYERS.md) and provide the ARN of the layer you want to use.
 
-Select a custom layer and specify the ARN: `arn:aws:lambda:eu-west-1:359790667553:layer:PyRASP-full-0.6.0:1`
-
-> Seceral options are available for the layers, see [Available Layers](#available-layers)
+> It is recommended to use the  the `PyRASP-Full` layer.
 
 # 2. Run
 
@@ -781,10 +780,8 @@ If some modules are already loaded from another layer, it is possible to rebuild
 ### Available Layers
 Several layers are made available to allow custom deployment. 
 <br>It is strongly recommended to use the latest version, at least in the beta stage (version 0.x.x). But is up to you...
-| Name | Version | Size | Comments | ARN |
-| - | - | - | - | - |
-| PyRASP-Full-0-6-0 | 0.6.0 | 80 MB | PyRASP module and full dependencies | `arn:aws:lambda:eu-west-1:359790667553:layer:PyRASP-Full-0.6.0:1` |
-| PyRASP-0-6-0 | 0.6.0 | 750 kB | PyRASP module, no dependencies | `arn:aws:lambda:eu-west-1:359790667553:layer:PyRASP-0.6.0:1` |
+<br>See the list of [Available Layers](https://github.com/rbidou/pyrasp/blob/main/LAMBDA-LAYERS.md)
+
 
 # 8. Contacts
 Renaud Bidou - renaud@paracyberbellum.io
