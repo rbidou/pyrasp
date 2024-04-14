@@ -333,7 +333,6 @@ Configuration is set from a JSON file.
         "CHANGE_SERVER": true,
         "SERVER_HEADER": "Apache",
     
-        //-- Cloud Operations --//
         "BEACON": false,
         "TELEMETRY_DATA": false,
         "BEACON_URL": "",
