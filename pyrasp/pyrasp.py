@@ -1,4 +1,4 @@
-VERSION = '0.6.0'
+VERSION = '0.6.1'
 
 from pprint import pprint
 import time
@@ -18,11 +18,13 @@ import sys
 from functools import partial
 import psutil
 import os
+from functools import wraps
 
 # Flask
 try:
     from flask import request
     from flask import Response as FlaskResponse
+    from flask.wrappers import Response as FlaskResponseType
     from werkzeug.utils import import_string
 except:
     pass
@@ -45,34 +47,35 @@ try:
 except:
     pass
 
-# MULTIPROCESSING - NOT FOR AWS ENVIRONMENTS
-if os.environ.get("AWS_EXECUTION_ENV") is None:
+# MULTIPROCESSING - NOT FOR AWS & GCP ENVIRONMENTS
+if all([ 
+    os.environ.get("AWS_EXECUTION_ENV") is None,
+    os.environ.get("K_SERVICE") is None,
+]):
     from threading import Thread
     from queue import Queue
-
-# WRAPPER FOR AWS LAMBDA HANDLER
-else:
-    from functools import wraps
 
 # DATA GLOBALS
 try:
     from pyrasp.pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION
-    from pyrasp.pyrasp_data import DEFAULT_CONFIG
-    from pyrasp.pyrasp_data import ATTACKS, ATTACKS_CHECKS
+    from pyrasp.pyrasp_data import DEFAULT_CONFIG, DEFAULT_SECURITY_CHECKS
+    from pyrasp.pyrasp_data import ATTACKS, ATTACKS_CHECKS, ATTACKS_CODES, BRUTE_FORCE_ATTACKS
     from pyrasp.pyrasp_data import SQL_INJECTIONS_POINTS, SQL_INJECTIONS_VECTORS, SQL_INJECTIONS_FP
     from pyrasp.pyrasp_data import XSS_VECTORS
     from pyrasp.pyrasp_data import COMMAND_INJECTIONS_VECTORS
     from pyrasp.pyrasp_data import DLP_PATTERNS
-    from pyrasp.pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP
+    from pyrasp.pyrasp_data import PATTERN_CHECK_FUNCTIONS
+    from pyrasp.pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE
 except:
     from pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION
-    from pyrasp_data import DEFAULT_CONFIG
-    from pyrasp_data import ATTACKS, ATTACKS_CHECKS
+    from pyrasp_data import DEFAULT_CONFIG, DEFAULT_SECURITY_CHECKS
+    from pyrasp_data import ATTACKS, ATTACKS_CHECKS, ATTACKS_CODES, BRUTE_FORCE_ATTACKS
     from pyrasp_data import SQL_INJECTIONS_POINTS, SQL_INJECTIONS_VECTORS, SQL_INJECTIONS_FP
     from pyrasp_data import XSS_VECTORS
     from pyrasp_data import COMMAND_INJECTIONS_VECTORS
     from pyrasp_data import DLP_PATTERNS
-    from pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP
+    from pyrasp_data import PATTERN_CHECK_FUNCTIONS
+    from pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE
 
 # IP
 IP_COUNTRY = {}
@@ -95,13 +98,20 @@ def make_security_log(application, event_type, source_ip, log_format = 'syslog',
     if log_format.lower() == 'syslog':
 
         time = datetime.now().strftime(r"%Y/%m/%d %H:%M:%S")
+        codes = ''
+        if event_details.get('codes'):
+            codes = ' - '.join(event_details['codes'])
+
+        action = event_details.get('action') or 0
 
         data = f'[{time}] '
         data += ' - '.join([
             f'"{application}"',
             f'"{event_type}"',
             f'"{source_ip}"',
-            f'"{country}"'
+            f'"{country}"',
+            f'"{codes}"',
+            f'"{action}"'
         ])
 
         if event_details.get('location') and event_details.get('payload'):
@@ -294,7 +304,6 @@ class PyRASP():
     # CONSTRUCTOR & DESTRUCTOR
     ####################################################
 
-
     def __init__(self, app = None, app_name = None, hosts = [], conf = None, key = None, cloud_url = None, verbose_level = 10, dev = False):
 
         # Set init verbosity
@@ -323,12 +332,6 @@ class PyRASP():
         self.print_screen('[+] Loading default configuration', init=True, new_line_up = False)
         for config_key in DEFAULT_CONFIG:
             setattr(self, config_key, DEFAULT_CONFIG[config_key])
-
-        '''
-        # Load default configuration
-        if conf == None and cloud_url == None:
-            self.print_screen('[!] No configuration provided. Running default configuration', init=True, new_line_up = False)
-        '''
 
         # Load from server
         ## Get cloud URL
@@ -360,24 +363,24 @@ class PyRASP():
         if not self.CONF_FILE is None:
             self.load_file_config(self.CONF_FILE)
 
-        # Default config customization
+        # Default config customization from 
         if all([
-            conf == None,
-            key == None,
+            self.CONF_FILE == None,
+            self.KEY == None,
             not verbose_level == None
         ]):
             self.VERBOSE = verbose_level
 
         if all([
-            conf == None,
-            key == None,
+            self.CONF_FILE == None,
+            self.KEY == None,
             not app_name == None
         ]):
             self.APP_NAME = app_name
 
         if all([
-            conf == None,
-            key == None,
+            self.CONF_FILE == None,
+            self.KEY== None,
             len(hosts)
         ]):
             self.HOSTS = hosts
@@ -440,7 +443,7 @@ class PyRASP():
                 try:
                     sqli_model_file = pkg_resources.resource_filename('pyrasp', 'data/'+sqli_model_file)
                     self.sqli_model = pickle.load(open(sqli_model_file,'rb'))
-                except:
+                except Exception as e:
                     pass
                 else:
                     sqli_model_loaded = True
@@ -451,26 +454,36 @@ class PyRASP():
                 self.print_screen('[+] SQLI model loaded', init=True, new_line_up = False)
 
 
-        # Start logging
-        if self.LOG_ENABLED and not self.PLATFORM == 'AWS Lambda':
-            self.start_logging()
+        # AWS & GCP
+        if self.PLATFORM in [ 'AWS Lambda', 'Google Cloud Function']:
+            pass
 
-        # Start beacon
-        if self.BEACON and not self.PLATFORM == 'AWS Lambda':
-            # Start beacon
-            self.start_beacon()
+        # Other environments
+        else:   
+            from threading import Thread
+            from queue import Queue
+
+            # Start logging thread
+            if self.LOG_ENABLED:
+                self.start_logging()
+
+            # Start beacon thread
+            if self.BEACON:
+                self.start_beacon()
 
         self.print_screen('[+] PyRASP succesfully started', init=True)
         self.print_screen('############################', init=True, new_line_down=True)
 
     def __del__(self):
 
-        if self.BEACON:
-            global STOP_BEACON_THREAD
-            STOP_BEACON_THREAD = True
+        if not self.PLATFORM in [ 'AWS Lambda', 'Google Cloud Function']:
 
-        if self.LOG_ENABLED:
-            self.LOG_QUEUE.put('--STOP--')
+            if self.BEACON:
+                global STOP_BEACON_THREAD
+                STOP_BEACON_THREAD = True
+
+            if self.LOG_ENABLED:
+                self.LOG_QUEUE.put('--STOP--')
 
         return
     
@@ -596,7 +609,7 @@ class PyRASP():
             self.load_config(new_config)
 
         # Restart services
-        if not error and not self.PLATFORM == 'AWS Lambda':
+        if not error and not self.PLATFORM in ['AWS Lambda', 'Google Cloud Function' ]:
             if config_changes['logs']:
                 self.start_logging(restart = True) 
             if config_changes['beacon']:
@@ -741,10 +754,15 @@ class PyRASP():
     def load_config(self, config):
 
         # Load parameters
-        config_params = config.get('config') or {}
+        config_params = config.get('config') or config
 
         for key in config_params:
             setattr(self, key, config_params[key])
+
+        # Setting defautl security checks
+        for security_check in DEFAULT_SECURITY_CHECKS:
+            if not config_params['SECURITY_CHECKS'].get(security_check):
+                config_params['SECURITY_CHECKS'][security_check] = DEFAULT_SECURITY_CHECKS[security_check]
         
         for key in config_params:
             self.print_screen(f'[+] {key} => {config_params[key]}', 100, init=False)    
@@ -764,11 +782,24 @@ class PyRASP():
     def handle_attack(self, attack, host, request_path, source_ip, timestamp):
 
         attack_id = attack['type']
-        attack_details = attack.get('details') or {}
         attack_check = ATTACKS_CHECKS[attack_id]
+        attack_details = attack.get('details') or {}
+        action = None
 
-        if not self.BLACKLIST_OVERRIDE and self.SECURITY_CHECKS.get(attack_check) == 2:
+        # Generic case
+        if not attack_id == 0:
+            action = self.SECURITY_CHECKS[attack_check] 
+        # Blacklist
+        else:
+            action = 2
+
+        attack_details['action'] = action
+        if ATTACKS_CODES.get(attack_id):
+            attack_details['codes'] = ATTACKS_CODES[attack_id]
+
+        if not self.BLACKLIST_OVERRIDE and action == 2:
             self.blacklist_ip(source_ip, timestamp, attack_check)
+
 
         try:
             self.print_screen(f'[!] {ATTACKS[attack_id]}: {attack["details"]["location"]} -> {attack["details"]["payload"]}')
@@ -776,7 +807,7 @@ class PyRASP():
             self.print_screen(f'[!] Attack - No details')
     
         if self.LOG_ENABLED:
-            self.log_security_event(ATTACKS_CHECKS[attack_id], source_ip, None, attack_details)
+            self.log_security_event(attack_check, source_ip, None, attack_details)
 
     ####################################################
     # CHECKS CONTROL
@@ -845,6 +876,9 @@ class PyRASP():
                 # Get injectable params
                 if attack == None and inject_vectors == None:
                     inject_vectors = self.get_vectors(request)
+                    inject_vectors = self.remove_exceptions(inject_vectors)
+                    
+
 
                 # Check headers
                 if attack == None:
@@ -869,19 +903,33 @@ class PyRASP():
         return attack
 
     # Outbound attacks
-    def check_outbound_attacks(self, response_content, request_path, source_ip, timestamp, error):
+    def check_outbound_attacks(self, response_content, request_path, source_ip, timestamp, status_code, attack_type):
 
         attack = None
+        error = False
+        check_brute = False
+        check_dlp = False
 
-        # Check flood errors
+        if status_code >= 400:
+            error = True
+
+        # Check errors floods and brute force
         if error:
+            check_brute = True
+        elif attack_type in BRUTE_FORCE_ATTACKS:
+            check_brute = True
 
-            if not attack is None and attack.get('type') == ATTACK_BLACKLIST:
-                if self.SECURITY_CHECKS.get('flood'):
-                    attack = self.flood_and_brute_check(request_path, source_ip, timestamp, error=True)
+
+        if check_brute:
+
+            if self.SECURITY_CHECKS.get('brute'):
+                attack = self.flood_and_brute_check(request_path, source_ip, timestamp, error=True)
 
         # Check DLP
-        if not error and attack == None:
+        if not error and attack is None:
+            check_dlp = True
+
+        if check_dlp:
 
             if self.SECURITY_CHECKS.get('dlp') and not response_content == None:
                 attack = self.check_dlp(response_content)
@@ -889,10 +937,11 @@ class PyRASP():
         return attack
     
     # Alter response
-    def process_response(self, response, attack = None):
+    def process_response(self, response, attack = None, log_only = True):
 
-        if not attack == None:
-            response = self.make_attack_response()
+        if attack:
+            if not log_only:
+                response = self.make_attack_response()
             self.REQUESTS['attacks'] += 1
 
         elif response.status_code == 200:
@@ -922,6 +971,7 @@ class PyRASP():
 
         result = False
         attack = None
+        attack_type = ATTACK_FLOOD
 
         ignore = True
         ratio = self.FLOOD_RATIO
@@ -940,6 +990,7 @@ class PyRASP():
         ## Error response: all requests to be processed
         if error:
             ignore = False
+            attack_type = ATTACK_BRUTE
 
         ## Request to be processed
         if not ignore:
@@ -960,7 +1011,7 @@ class PyRASP():
 
         if result:
             attack = {
-                'type': ATTACK_FLOOD,
+                'type': attack_type,
                 'details': { 
                     'location': 'path',
                     'payload': request_path
@@ -994,14 +1045,29 @@ class PyRASP():
 
         attack = None
 
-        if any([request_path.startswith(decoy_route) for decoy_route in self.DECOY_ROUTES]):
-            attack = {
-                'type': ATTACK_DECOY,
-                'details': {
-                    'location': 'path',
-                    'payload': request_path
+        for decoy_route in self.DECOY_ROUTES:
+
+            # Get decoy route configuration 
+            if type(decoy_route) == list:
+                pattern = decoy_route[0]
+                match_type = decoy_route[1]
+                if not match_type in PATTERN_CHECK_FUNCTIONS:
+                    match_type = 'starts'
+            else:
+                pattern = decoy_route
+                match_type = 'starts'
+
+            if self.check_pattern(request_path, pattern, match_type):
+
+                attack = {
+                    'type': ATTACK_DECOY,
+                    'details': {
+                        'location': 'path',
+                        'payload': request_path
+                    }
                 }
-            }
+
+                break
 
         return attack
 
@@ -1392,8 +1458,8 @@ class PyRASP():
             'headers_names': [],
             'headers_values': [],
             'cookies': [],
-            'user_agent': '',
-            'referer': '',
+            'user_agent': [],
+            'referer': [],
             'qs_variables': [],
             'qs_values': [],
             'post_variables': [],
@@ -1452,11 +1518,11 @@ class PyRASP():
                 
             # User Agent
             elif header.lower() == 'user-agent':
-                vectors['user_agent'] = headers[header]
+                vectors['user_agent'] = [ headers[header] ]
 
             # Refererer
             elif header.lower() == 'referer':
-                vectors['referer'] = headers[header]
+                vectors['referer'] = [ headers[header] ]
             
             # Other headers
             else:
@@ -1465,6 +1531,37 @@ class PyRASP():
 
         return vectors
     
+    # Remove exceptions from vectors
+    def remove_exceptions(self, inject_vectors):
+                    
+        for vector in inject_vectors:
+
+            inject_payloads = inject_vectors[vector]
+
+            for payload in inject_payloads:
+
+                is_exception = False
+
+                for exception in self.EXCEPTIONS:
+
+                    if type(exception) == list:
+                        pattern = exception[0]
+                        match_type = exception[1]
+                        if not match_type in PATTERN_CHECK_FUNCTIONS:
+                            match_type = 'match'
+                    else:
+                        pattern = exception
+                        match_type = 'match'
+
+                    if self.check_pattern(payload, pattern, match_type):
+                        is_exception = True
+                        break
+                
+                if is_exception:
+                    inject_payloads.remove(payload)
+
+        return inject_vectors
+
     def get_request_path(self, request):
 
         return []
@@ -1589,7 +1686,37 @@ class PyRASP():
         
         return decoded_variables
             
+    # Pattern checking
+    def check_pattern(self, text, pattern, match_type):
+
+        match = False
+
+        try:
+
+            # Regular expression
+            if match_type == 'regex':
+                match = re.search(pattern, text)
+            # Starts
+            elif match_type == 'starts':
+                match = text.startswith(pattern)
+            # Ends
+            elif match_type == 'ends':
+                match = text.endswith(pattern)
+            # Contains
+            elif match_type == 'contains':
+                match = pattern in text
+            # Matches
+            elif match_type == 'match':
+                match = text == pattern
+                
+        except Exception as e:
+            pass
+
+        return match
+
 class FlaskRASP(PyRASP):
+
+    CURRENT_ATTACKS = {}
 
     def __init__(self, app, app_name=None, hosts=[], conf=None, key=None, cloud_url=None,verbose_level=10, dev=False):
         self.PLATFORM = 'Flask'
@@ -1619,9 +1746,9 @@ class FlaskRASP(PyRASP):
 
             # Send attack status in status code for handling by @after_request
             if not attack == None:
-                self.handle_attack(attack, host, request_path, source_ip, timestamp)
-                return self.GTFO_MSG, 1
-           
+                attack_id = '::'.join([host, request_method, request_path, source_ip])
+                self.CURRENT_ATTACKS[attack_id] = attack
+
     # Outgoing responses
     def set_after_security_checks(self, app):
         @app.after_request
@@ -1629,17 +1756,22 @@ class FlaskRASP(PyRASP):
 
             (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
 
-            error = False
+            status_code = 200
             response_attack = None
-            request_attack = False
+            request_attack = None
+            log_only = False
+            security_check = None
+            inbound_attack_type = None
 
             # Get attack from @before_request checks
-            if response.status_code == 1:
-                request_attack = True
+            attack_id = '::'.join([host, request_method, request_path, source_ip])
+            current_attack = self.CURRENT_ATTACKS.get(attack_id)
+            if current_attack:
+                request_attack = current_attack
+                del self.CURRENT_ATTACKS[attack_id]
 
-            # Check if response is error
-            if request_attack or response.status_code >= 400:
-                error = True
+            status_code = response.status_code
+            inbound_attack_type = current_attack['type'] if current_attack else None
 
             # Check brute force and flood
             try:
@@ -1647,12 +1779,25 @@ class FlaskRASP(PyRASP):
             except:
                 pass
             else:
-                response_attack = self.check_outbound_attacks(response_content, request_path, source_ip, timestamp, error)
-                        
-            if response_attack and not request_attack == None:
+                response_attack = self.check_outbound_attacks(response_content, request_path, source_ip, timestamp, status_code, inbound_attack_type)
+                
+            # Set response   
+            if response_attack:
+                security_check = ATTACKS_CHECKS[response_attack['type']]
+            elif request_attack:
+                security_check = ATTACKS_CHECKS[request_attack['type']]
+            
+            if response_attack:
                 self.handle_attack(response_attack, host, request_path, source_ip, timestamp)
+            elif request_attack:
+                self.handle_attack(request_attack, host, request_path, source_ip, timestamp)
 
-            response = self.process_response(response, request_attack or response_attack)
+            # Check log only
+            if security_check and self.SECURITY_CHECKS.get(security_check) == 3:
+                log_only = True
+
+            # Process response
+            response = self.process_response(response, response_attack or request_attack, log_only = log_only)
 
             return response
 
@@ -1794,7 +1939,9 @@ class FastApiRASP(PyRASP):
     
             inbound_attack = None
             outbound_attack = None
-            error = False
+            status_code = 200
+            log_only = False
+            security_check = None
 
             # Get Main params
             (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
@@ -1806,30 +1953,43 @@ class FastApiRASP(PyRASP):
             inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request, vectors)
               
             # Send response
-            if not inbound_attack:
+            if inbound_attack:
+                security_check = ATTACKS_CHECKS[inbound_attack['type']]
+
+            if not inbound_attack or self.SECURITY_CHECKS.get(security_check) == 3:
                 response = await call_next(request)
             else:
                 response = FastApiResponse()
+
+            status_code = response.status_code
+            inbound_attack_type = inbound_attack['type'] if inbound_attack else None
             
             # Check outbound attacks
-            if inbound_attack or response.status_code >= 400:
-                error = True
+            if inbound_attack or status_code >= 400:
                 response_content = None
+            
             else:
                 
                 response_body = [chunk async for chunk in response.body_iterator]
                 response.body_iterator = iterate_in_threadpool(iter(response_body))
                 response_content = response_body[0].decode()
                 
-            outbound_attack = self.check_outbound_attacks(response_content, request_path, source_ip, timestamp, error)
+            outbound_attack = self.check_outbound_attacks(response_content, request_path, source_ip, timestamp, status_code, inbound_attack_type)
+
+            # Set response   
+            if outbound_attack:
+                security_check = ATTACKS_CHECKS[outbound_attack['type']]
 
             if outbound_attack:
                 self.handle_attack(outbound_attack, host, request_path, source_ip, timestamp)
             elif inbound_attack:
                 self.handle_attack(inbound_attack, host, request_path, source_ip, timestamp)
 
+            # Check log only
+            if security_check and self.SECURITY_CHECKS.get(security_check) == 3:
+                log_only = True
             
-            response = self.process_response(response, inbound_attack or outbound_attack)
+            response = self.process_response(response, inbound_attack or outbound_attack, log_only = log_only)
 
             return response
         
@@ -1942,8 +2102,8 @@ class FastApiRASP(PyRASP):
             'headers_names': [],
             'headers_values': [],
             'cookies': [],
-            'user_agent': '',
-            'referer': '',
+            'user_agent': [],
+            'referer': [],
             'qs_variables': [],
             'qs_values': [],
             'post_variables': [],
@@ -2000,11 +2160,11 @@ class FastApiRASP(PyRASP):
                 
             # User Agent
             elif header.lower() == 'user-agent':
-                vectors['user_agent'] = headers[header]
+                vectors['user_agent'] = [ headers[header] ]
 
             # Refererer
             elif header.lower() == 'referer':
-                vectors['referer'] = headers[header]
+                vectors['referer'] = [ headers[header] ]
             
             # Other headers
             else:
@@ -2043,6 +2203,9 @@ class DjangoRASP(PyRASP):
         inbound_attack = None
         outbound_attack = None
         error = False
+        status_code = 200
+        log_only = False
+        security_check = None
 
         # Get Main params
         (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
@@ -2050,25 +2213,39 @@ class DjangoRASP(PyRASP):
         # Check inboud attacks
         inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request)
 
-        if not inbound_attack:
+        if inbound_attack:
+            security_check = ATTACKS_CHECKS[inbound_attack['type']]
+
+        if not inbound_attack or self.SECURITY_CHECKS.get(security_check) == 3:
             response = self.get_response(request)
         else:
             response = HttpResponse()
 
-        if inbound_attack or response.status_code >= 400:
-            error = True
+        status_code = response.status_code
+        inbound_attack_type = inbound_attack['type'] if inbound_attack else None
+
+        # Check outbound attacks
+        if inbound_attack or status_code >= 400:
             response_content = None
+
         else:
             response_content = response.content.decode()
 
-        outbound_attack = self.check_outbound_attacks(response_content, request_path, source_ip, timestamp, error)
+        outbound_attack = self.check_outbound_attacks(response_content, request_path, source_ip, timestamp, status_code, inbound_attack_type)
+
+        if outbound_attack:
+            security_check = ATTACKS_CHECKS[outbound_attack['type']]
 
         if outbound_attack:
             self.handle_attack(outbound_attack, host, request_path, source_ip, timestamp)
         elif inbound_attack:
             self.handle_attack(inbound_attack, host, request_path, source_ip, timestamp)
 
-        response = self.process_response(response, inbound_attack or outbound_attack)
+        # Check log only
+        if security_check and self.SECURITY_CHECKS.get(security_check) == 3:
+            log_only = True
+
+        response = self.process_response(response, inbound_attack or outbound_attack, log_only = log_only)
 
         return response
 
@@ -2179,7 +2356,8 @@ class LambdaRASP(PyRASP):
     def __init__(self, app=None, app_name=None, hosts=[], conf=None, key=None, cloud_url=None, verbose_level=10, dev=False):
         self.PLATFORM = 'AWS Lambda'
         super().__init__(app, app_name, hosts, conf, key, cloud_url, verbose_level, dev)
-        self.send_beacon()
+        if self.BEACON:
+            self.send_beacon()
 
     ####################################################
     # LOGGING
@@ -2207,31 +2385,45 @@ class LambdaRASP(PyRASP):
             (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
 
             # Analyze request
-            attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request)
+            inbound_attack = None
+            outbound_attack = None
+            status_code = 200
+            log_only = False
+            security_check = None
+            response = {}
 
-            if attack == None:
+            inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request)
+
+            if inbound_attack:
+                security_check = ATTACKS_CHECKS[inbound_attack['type']]
+
+            if not inbound_attack or self.SECURITY_CHECKS.get(security_check) == 3:
                 response = f(request, context)
 
-                # Set response params
-                response_content_structure = response.get('body') or {}
-                response_content = json.dumps(response_content_structure)
-                error = True
-                status_code = response.get('statusCode')
-                if status_code and int(status_code) < 400:
-                    error = False
+            # Set response params
+            response_content_structure = response.get('body') or {}
+            response_content = json.dumps(response_content_structure)
 
-                # Analyze response
-                attack = self.check_outbound_attacks(response_content, request_path, source_ip, timestamp, error)
-            
-            if attack:
-                self.handle_attack(attack, host, request_path, source_ip, timestamp)
-                response = {
-                    'statusCode': self.DENY_STATUS_CODE,
-                    'body': json.dumps(self.GTFO_MSG)
-                }
+            status_code = response.get('statusCode')
+            inbound_attack_type = inbound_attack['type'] if inbound_attack else None
 
-            
+            # Analyze response
+            outbound_attack = self.check_outbound_attacks(response_content, request_path, source_ip, timestamp, status_code, inbound_attack_type)
 
+            if outbound_attack:
+                security_check = ATTACKS_CHECKS[outbound_attack['type']]
+
+            if outbound_attack:
+                self.handle_attack(outbound_attack, host, request_path, source_ip, timestamp)
+            elif inbound_attack:
+                self.handle_attack(inbound_attack, host, request_path, source_ip, timestamp)
+
+            # Check log only
+            if security_check and self.SECURITY_CHECKS.get(security_check) == 3:
+                log_only = True
+
+            response = self.process_response(response, inbound_attack or outbound_attack, log_only = log_only)
+                
             return response
             
         return decorator
@@ -2277,6 +2469,34 @@ class LambdaRASP(PyRASP):
         except:
             pass
 
+    ####################################################
+    # RESPONSE PROCESSING
+    ####################################################
+
+    # Alter response
+    def process_response(self, response, attack = None, log_only = True):
+
+        if attack:
+            if not log_only:
+                response = self.make_attack_response()
+            self.REQUESTS['attacks'] += 1
+
+        elif response['statusCode'] == 200:
+            self.REQUESTS['success'] += 1
+
+        else:
+            self.REQUESTS['errors'] += 1
+
+        return response
+
+    def make_attack_response(self):
+
+        response = {
+            'statusCode': self.DENY_STATUS_CODE,
+            'body': json.dumps(self.GTFO_MSG)
+        }
+
+        return response
 
     ####################################################
     # PARAMS & VECTORS
@@ -2379,6 +2599,165 @@ class LambdaRASP(PyRASP):
 
         return headers
         
+class GcpRASP(FlaskRASP):
+
+    LAST_BEACON = time.time()
+
+    def __init__(self, app=None, app_name=None, hosts=[], conf=None, key=None, cloud_url=None, verbose_level=10, dev=False):
+        self.PLATFORM = 'Google Cloud Function'
+        super(FlaskRASP, self).__init__(app, app_name, hosts, conf, key, cloud_url, verbose_level, dev)
+        if self.BEACON:
+            self.send_beacon()
+
+
+    ####################################################
+    # CHECKS CONTROL
+    ####################################################
+
+    # GCP handler wrapper
+    def register(self, f):
+    
+        @wraps(f)
+        def decorator(request):
+
+            # Sending beacons to get configuration and blacklist updates
+            time_now = time.time()
+            if self.BEACON and time_now > self.LAST_BEACON + self.BEACON_DELAY:
+                self.send_beacon()
+                self.LAST_BEACON = time_now
+
+            (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
+
+            # Analyze request
+            inbound_attack = None
+            outbound_attack = None
+            log_only = False
+            security_check = None
+            status_code = 200
+            response = None
+
+            inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request)
+
+            if inbound_attack:
+                security_check = ATTACKS_CHECKS[inbound_attack['type']]
+
+            if not inbound_attack or self.SECURITY_CHECKS.get(security_check) == 3:
+                response = f(request)
+
+            (response_content, status_code) = self.get_response_data(response) or None
+            inbound_attack_type = inbound_attack['type'] if inbound_attack else None
+
+            # Analyze response
+            outbound_attack = self.check_outbound_attacks(response_content, request_path, source_ip, timestamp, status_code, inbound_attack_type)
+
+            if outbound_attack:
+                security_check = ATTACKS_CHECKS[outbound_attack['type']]
+
+            if outbound_attack:
+                self.handle_attack(outbound_attack, host, request_path, source_ip, timestamp)
+            elif inbound_attack:
+                self.handle_attack(inbound_attack, host, request_path, source_ip, timestamp)
+
+            # Check log only
+            if security_check and self.SECURITY_CHECKS.get(security_check) == 3:
+                log_only = True
+
+            response = self.process_response(response, inbound_attack or outbound_attack, log_only = log_only)
+                
+            return response
+            
+        return decorator
+    
+    ####################################################
+    # RESPONSE PROCESSING
+    ####################################################
+
+    # Alter response
+    def process_response(self, response, attack = None, log_only = True):
+
+        status_code = self.get_response_data(response)[1]
+
+        if attack:
+            if not log_only:
+                response = self.make_attack_response()
+            self.REQUESTS['attacks'] += 1
+
+        elif status_code == 200:
+            self.REQUESTS['success'] += 1
+
+        else:
+            self.REQUESTS['errors'] += 1
+
+        return response
+    
+    def make_attack_response(self):
+
+        response = FlaskResponse()
+        response.set_data(self.GTFO_MSG)
+        response.status_code = self.DENY_STATUS_CODE
+
+        return response
+
+    def get_response_data(self, response):
+
+        if type(response) == FlaskResponseType:
+            status_code = response.status_code
+            content = response.get_data(True)
+
+        elif type(response) == tuple:
+            content = response[0]
+            if len(response) == 2:
+                status_code = response[1]
+            else:
+                status_code = 200
+
+        else:
+            content = response
+            status_code = 200
+
+        return (content, status_code)
+    
+    ####################################################
+    # LOGGING
+    ####################################################
+
+    def log_security_event(self, event_type, source_ip, user = None, details = {}):
+
+        log_data = make_security_log(self.APP_NAME, event_type, source_ip, self.LOG_FORMAT, user, details, False)
+        
+        webhook = False
+        syslog_udp = False
+        syslog_tcp = False
+
+        if self.LOG_FORMAT.lower() in ['json', 'pcb']:
+            path = self.LOG_PATH
+            if not path.startswith('/'):
+                path = '/'+path
+            server_url = f'{self.LOG_PROTOCOL.lower()}://{self.LOG_SERVER}:{self.LOG_PORT}{path}'
+            webhook = True
+
+        elif self.LOG_FORMAT.lower() == 'syslog':
+            if self.LOG_PROTOCOL.lower() == 'udp':
+                syslog_udp = True
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            elif self.LOG_PROTOCOL.lower() == 'tcp':
+                syslog_tcp = True
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        try:
+            if webhook:
+                requests.post(server_url, json=log_data, timeout=1) 
+            elif syslog_udp:
+                sock.sendto(log_data.encode(), (self.LOG_SERVER, self.LOG_PORT))
+            elif syslog_tcp:
+                sock.connect((self.LOG_SERVER, self.LOG_PORT))
+                sock.settimeout(1)
+                sock.send(log_data)
+                sock.close()
+
+        except:
+            pass
+
 
     
         

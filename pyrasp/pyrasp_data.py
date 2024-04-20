@@ -3,15 +3,14 @@
 #
 
 DATA_VERSION = '1.1.0'
-XSS_MODEL_VERSION = '1.1.0'
-SQLI_MODEL_VERSION = '1.0.0'
+XSS_MODEL_VERSION = '1.2.0'
+SQLI_MODEL_VERSION = '1.1.0'
 
 # 
-# CLOUD SERVER
+# UTILS
 #
 
-PCB_SERVER = 'rasp.paracyberbellum.io:8080'
-PCB_PROTOCOL = 'http'
+PATTERN_CHECK_FUNCTIONS = [ 'regex', 'starts', 'contains', 'match' ]
 
 #
 # DETECTION
@@ -29,8 +28,11 @@ ATTACKS = [
     'Parameter Pollution',  # 8
     'Command Injection',    # 9
     'Forbidden Header',     # 10
-    'Data Leak Prevention'  # 11
+    'Data Leak Prevention', # 11
+    'Brute Force'           # 12
 ]
+
+BRUTE_FORCE_ATTACKS = [ 1, 3, 5, 10 ]
 
 # Attacks IDs
 ATTACK_BLACKLIST = 0
@@ -45,6 +47,7 @@ ATTACK_HPP = 8
 ATTACK_CMD = 9
 ATTACK_HEADER = 10
 ATTACK_DLP = 11
+ATTACK_BRUTE = 12
 
 ATTACKS_CHECKS = [
     'blacklist',
@@ -58,9 +61,46 @@ ATTACKS_CHECKS = [
     'hpp',
     'command',
     'headers',
-    'dlp'
+    'dlp',
+    'brute'
 ]
 
+ATTACKS_CODES = {
+    ATTACK_BLACKLIST: ['PCB000'],
+    ATTACK_PATH: ['T1592.002', 'PCB001'],
+    ATTACK_FLOOD: ['T1498', 'PCB002'],
+    ATTACK_SPOOF: ['T1594', 'PCB003'],
+    ATTACK_DECOY: ['T1592.002', 'PCB004'],
+    ATTACK_FORMAT: ['PCB005'],
+    ATTACK_SQLI: ['T1111', 'PCB006'],
+    ATTACK_XSS: ['T1059.007', 'PCB007'],
+    ATTACK_HPP: ['T1211', 'PCB008' ],
+    ATTACK_CMD: ['T1059', 'PCB009'],
+    ATTACK_HEADER: ['PCB010'],
+    ATTACK_DLP: ['T1052', 'PCB011'],
+    ATTACK_BRUTE : ['T1110', 'PCB012'],
+}
+
+'''
+ATTACKS_CODES = {
+    'blacklist': ['', 'PCB000'],
+    'path': ['T1592.002', 'PCB001'],
+    'flood': ['T1498', 'PCB002'],
+    'spoofing': ['T1594', 'PCB003'],
+    'decoy': ['T1592.002', 'PCB004'],
+    'format': ['', 'PCB005'],
+    'sqli': ['T1111', 'PCB006'],
+    'xss': ['T1059.007', 'PCB007'],
+    'hpp': ['T1211', 'PCB008' ],
+    'command': ['T1059', 'PCB009'],
+    'headers': ['', 'PCB010'],
+    'dlp': ['T1052', 'PCB011'],
+    'brute': ['T1110', 'PCB012'],
+}
+'''
+
+
+    
 SQL_INJECTIONS_SIGNATURES = [ '@@VERSION', '@@DATABASE', 'master\.\.xp_cmdshell', 'updatexml\(']
 SQL_INJECTIONS_FP = ['^[a-zA-Z][\\w]+\\s*&\\s*[a-zA-Z][\\w]+$']
 
@@ -99,9 +139,27 @@ DLP_PATTERNS = {
 
 }
 
+
+
 #
 # DEFAULT CONFIGURATION
 #
+
+DEFAULT_SECURITY_CHECKS = {
+    "path": 1,
+    "headers": 0,
+    "flood": 2,
+    "spoofing": 0,
+    "decoy": 2,
+    "format": 2,
+    "sqli": 2,
+    "xss": 2,
+    "hpp": 2,
+    "command": 2,
+    "method": 0,
+    "dlp": 0,
+    "brute": 2
+}
 
 DEFAULT_CONFIG = {
     "HOSTS" : [],
@@ -112,20 +170,7 @@ DEFAULT_CONFIG = {
     "VERBOSE" : 0,
     "DECODE_B64" : True,
 
-    "SECURITY_CHECKS" : {
-        "path": 1,
-        "headers": 0,
-        "flood": 2,
-        "spoofing": 0,
-        "decoy": 2,
-        "format": 2,
-        "sqli": 2,
-        "xss": 2,
-        "hpp": 2,
-        "command": 2,
-        "method": 0,
-        "dlp": 0
-    },    
+    "SECURITY_CHECKS" : { },    
 
     "WHITELIST": [],
     "IGNORE_PATHS" : ["^/favicon.ico$","^/robots.txt$","^/sitemap\.(txt|xml)$"],
@@ -152,6 +197,8 @@ DEFAULT_CONFIG = {
         "/.git/",                                   
         "/.aws/ "                                 
     ],
+
+    "EXCEPTIONS" : [],
 
     "XSS_PROBA" : 0.60,
     "MIN_XSS_LEN": 16,
