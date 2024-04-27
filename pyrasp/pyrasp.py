@@ -1,4 +1,4 @@
-VERSION = '0.6.1'
+VERSION = '0.6.2'
 
 from pprint import pprint
 import time
@@ -47,6 +47,13 @@ try:
 except:
     pass
 
+# Azure
+try:
+    import azure.functions as func
+
+except:
+    pass
+
 # MULTIPROCESSING - NOT FOR AWS & GCP ENVIRONMENTS
 if all([ 
     os.environ.get("AWS_EXECUTION_ENV") is None,
@@ -58,20 +65,22 @@ if all([
 # DATA GLOBALS
 try:
     from pyrasp.pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION
+    from pyrasp.pyrasp_data import CLOUD_FUNCTIONS
     from pyrasp.pyrasp_data import DEFAULT_CONFIG, DEFAULT_SECURITY_CHECKS
     from pyrasp.pyrasp_data import ATTACKS, ATTACKS_CHECKS, ATTACKS_CODES, BRUTE_FORCE_ATTACKS
-    from pyrasp.pyrasp_data import SQL_INJECTIONS_POINTS, SQL_INJECTIONS_VECTORS, SQL_INJECTIONS_FP
-    from pyrasp.pyrasp_data import XSS_VECTORS
+    from pyrasp.pyrasp_data import SQL_INJECTIONS_POINTS, SQL_INJECTIONS_VECTORS, SQL_INJECTIONS_FP, SQL_QUOTES
+    from pyrasp.pyrasp_data import XSS_VECTORS, XSS_NON_ALPHA_PATTERN, NON_ALPHA_PATTERN
     from pyrasp.pyrasp_data import COMMAND_INJECTIONS_VECTORS
     from pyrasp.pyrasp_data import DLP_PATTERNS
     from pyrasp.pyrasp_data import PATTERN_CHECK_FUNCTIONS
     from pyrasp.pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE
 except:
     from pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION
+    from pyrasp_data import CLOUD_FUNCTIONS
     from pyrasp_data import DEFAULT_CONFIG, DEFAULT_SECURITY_CHECKS
     from pyrasp_data import ATTACKS, ATTACKS_CHECKS, ATTACKS_CODES, BRUTE_FORCE_ATTACKS
-    from pyrasp_data import SQL_INJECTIONS_POINTS, SQL_INJECTIONS_VECTORS, SQL_INJECTIONS_FP
-    from pyrasp_data import XSS_VECTORS
+    from pyrasp_data import SQL_INJECTIONS_POINTS, SQL_INJECTIONS_VECTORS, SQL_INJECTIONS_FP, SQL_QUOTES
+    from pyrasp_data import XSS_VECTORS, XSS_NON_ALPHA_PATTERN, NON_ALPHA_PATTERN
     from pyrasp_data import COMMAND_INJECTIONS_VECTORS
     from pyrasp_data import DLP_PATTERNS
     from pyrasp_data import PATTERN_CHECK_FUNCTIONS
@@ -454,8 +463,8 @@ class PyRASP():
                 self.print_screen('[+] SQLI model loaded', init=True, new_line_up = False)
 
 
-        # AWS & GCP
-        if self.PLATFORM in [ 'AWS Lambda', 'Google Cloud Function']:
+        # AWS, GCP & Azure
+        if self.PLATFORM in CLOUD_FUNCTIONS:
             pass
 
         # Other environments
@@ -476,7 +485,7 @@ class PyRASP():
 
     def __del__(self):
 
-        if not self.PLATFORM in [ 'AWS Lambda', 'Google Cloud Function']:
+        if not self.PLATFORM in CLOUD_FUNCTIONS:
 
             if self.BEACON:
                 global STOP_BEACON_THREAD
@@ -609,7 +618,7 @@ class PyRASP():
             self.load_config(new_config)
 
         # Restart services
-        if not error and not self.PLATFORM in ['AWS Lambda', 'Google Cloud Function' ]:
+        if not error and not self.PLATFORM in CLOUD_FUNCTIONS:
             if config_changes['logs']:
                 self.start_logging(restart = True) 
             if config_changes['beacon']:
@@ -761,7 +770,7 @@ class PyRASP():
 
         # Setting defautl security checks
         for security_check in DEFAULT_SECURITY_CHECKS:
-            if not config_params['SECURITY_CHECKS'].get(security_check):
+            if config_params['SECURITY_CHECKS'].get(security_check) == None:
                 config_params['SECURITY_CHECKS'][security_check] = DEFAULT_SECURITY_CHECKS[security_check]
         
         for key in config_params:
@@ -1103,9 +1112,10 @@ class PyRASP():
                     continue
 
                 # Select proper injected request format
-                quotes = ''
+                sql_quotes = ['']
                 injections_point = SQL_INJECTIONS_POINTS
                               
+                '''
                 for c in injection:
                     if c == '"':
                         quotes = '"'
@@ -1113,44 +1123,55 @@ class PyRASP():
                     if c == "'":
                         quotes = "'"
                         break
+                '''
+
+                for c in injection:
+                    if c in SQL_QUOTES and not c in sql_quotes:
+                        sql_quotes.append(c)
                 
                 # Test valid SQL for injection point
                 for injection_point in injections_point:
 
-                    # Add input at injection point with quotes if necessary
-                    sql = injection_point.replace('{{vector}}', quotes+injection+quotes)
+                    for quotes in sql_quotes:
 
-                    # Add spaces
-                    sql = re.sub('\(', ' ( ', sql)
-                    sql = re.sub('\)', ' ) ', sql)
-                    sql = re.sub('"', ' " ', sql)
-                    sql = re.sub("'", " ' ", sql)
+                        # Add input at injection point with quotes if necessary
+                        sql = injection_point.replace('{{vector}}', quotes+injection+quotes)
 
-                    # Remove comments
-                    sql = re.sub('/\*[^*]?\*/', '', sql)
-                    sql = re.sub('/\*.*', '', sql)
-                    sql = re.sub('--.*', '', sql)
-                    sql = re.sub('#.*', '', sql)
+                        # Add spaces
+                        sql = re.sub('\(', ' ( ', sql)
+                        sql = re.sub('\)', ' ) ', sql)
+                        sql = re.sub('"', ' " ', sql)
+                        sql = re.sub("'", " ' ", sql)
 
-                    # Parses request to split stacked requests
-                    parsed = sqlparse.split(sql)
-                    
-                    for statement in parsed:
+                        # Remove comments
+                        sql = re.sub('/\*[^*]?\*/', '', sql)
+                        sql = re.sub('/\*.*', '', sql)
+                        sql = re.sub('--.*', '', sql)
+                        sql = re.sub('#.*', '', sql)
 
-                        if len(statement):
-
-                            try:
-                                temp_db.execute(statement)
-                            except Exception as e:
-                                if 'no such table' in str(e):
-                                    sql_injection = True
-                                    
-
-                        if sql_injection:
-                            break
-                            
-                    if sql_injection:
+                        # Parses request to split stacked requests
+                        parsed = sqlparse.split(sql)
                         
+                        for statement in parsed:
+
+                            if len(statement):
+
+                                try:
+                                    temp_db.execute(statement)
+                                except Exception as e:
+                                    if 'no such table' in str(e):
+                                        sql_injection = True
+                                        
+
+                            if sql_injection:
+                                break
+                                
+                        if sql_injection:
+                            
+                            break
+
+                    if sql_injection:
+
                         break
 
                 if len(injection) < self.MIN_SQLI_LEN:
@@ -1195,7 +1216,7 @@ class PyRASP():
                 # Requires minimum_length
                 if len(injection) > self.MIN_XSS_LEN:
 
-                    if injection.count('[') > 8 and injection.count(']') > 8:
+                    if re.match(NON_ALPHA_PATTERN, injection) or len(re.findall(XSS_NON_ALPHA_PATTERN, injection)) > 8:
                         xss = True
                         break
 
@@ -2523,7 +2544,7 @@ class LambdaRASP(PyRASP):
                 request_path = request.get('path')
                 request_method = request.get('httpMethod')
                 if context and context.get('identity'):
-                        source_ip = context['identity'].get('sourceIp')
+                    source_ip = context['identity'].get('sourceIp')
 
         return (host, request_method, request_path, source_ip, timestamp)
     
@@ -2758,7 +2779,224 @@ class GcpRASP(FlaskRASP):
         except:
             pass
 
+class AzureRASP(PyRASP):
+
+    LAST_BEACON = time.time()
+
+    def __init__(self, app=None, app_name=None, hosts=[], conf=None, key=None, cloud_url=None, verbose_level=10, dev=False):
+        self.PLATFORM = 'Azure Function'
+        super().__init__(app, app_name, hosts, conf, key, cloud_url, verbose_level, dev)
+
+    ####################################################
+    # CHECKS CONTROL
+    ####################################################
+
+    # Azure Function handler wrapper
+    def register(self, f):
+    
+        @wraps(f)
+        def decorator(req):
+
+            request = req
+
+            # Sending beacons to get configuration and blacklist updates
+            time_now = time.time()
+            if self.BEACON and time_now > self.LAST_BEACON + self.BEACON_DELAY:
+                self.send_beacon()
+                self.LAST_BEACON = time_now
+
+            (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
+
+            # Analyze request
+            inbound_attack = None
+            outbound_attack = None
+            log_only = False
+            security_check = None
+            status_code = 200
+            response = func.HttpResponse()
+
+            inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request)
+
+            if inbound_attack:
+                security_check = ATTACKS_CHECKS[inbound_attack['type']]
+
+            if not inbound_attack or self.SECURITY_CHECKS.get(security_check) == 3:
+                response = f(req)
+
+            response_content = response.get_body().decode() or ''
+            status_code = response.status_code
+            inbound_attack_type = inbound_attack['type'] if inbound_attack else None
+
+            # Analyze response
+            outbound_attack = self.check_outbound_attacks(response_content, request_path, source_ip, timestamp, status_code, inbound_attack_type)
+
+            if outbound_attack:
+                security_check = ATTACKS_CHECKS[outbound_attack['type']]
+
+            if outbound_attack:
+                self.handle_attack(outbound_attack, host, request_path, source_ip, timestamp)
+            elif inbound_attack:
+                self.handle_attack(inbound_attack, host, request_path, source_ip, timestamp)
+
+            # Check log only
+            if security_check and self.SECURITY_CHECKS.get(security_check) == 3:
+                log_only = True
+
+            response = self.process_response(response, inbound_attack or outbound_attack, log_only = log_only)
+                
+            return response
+            
+        return decorator
+    
+    ####################################################
+    # RESPONSE PROCESSING
+    ####################################################
+
+    # Alter response
+    def process_response(self, response, attack = None, log_only = True):
+
+        status_code = response.status_code
+
+        if attack:
+            if not log_only:
+                response = self.make_attack_response()
+            self.REQUESTS['attacks'] += 1
+
+        elif status_code == 200:
+            self.REQUESTS['success'] += 1
+
+        else:
+            self.REQUESTS['errors'] += 1
+
+        return response
+    
+    def make_attack_response(self):
+
+        response = func.HttpResponse(self.GTFO_MSG, status_code=self.DENY_STATUS_CODE)
+
+        return response
+
+    ####################################################
+    # PARAMS & VECTORS
+    ####################################################
+
+    def get_params(self, request):
+
+        (host, request_method, request_path, source_ip, timestamp) = ('', '', '', '', time.time())
+
+
+        headers = dict(request.headers)
+
+        host = headers.get('host') if headers.get('host') else '127.0.0.1'
+        request_method = str(request.method)
+        request_path = headers.get('x-original-url') if headers.get('x-original-url') else '/'
+
+        source_ip_port = headers.get('x-forwarded-for')
+        source_ip = source_ip_port.split(':')[0] if source_ip_port else '127.0.0.1'
+
+        return (host, request_method, request_path, source_ip, timestamp)
+    
+    def get_query_string(self, request):
+
+        query_string_list = dict(request.params)
+
+        query_string = {}
+        for qs_variable in query_string_list:
+            qs_value = query_string_list[qs_variable]
+            if not qs_variable in query_string:
+                query_string[qs_variable] = []
+            query_string[qs_variable].append(qs_value)
+
+        return query_string
+    
+    def get_posted_data(self, request):
+
+        posted_data = {}
+
+        posted_data_full = request.get_body().decode() or ''
+
+        posted_data_parts = posted_data_full.split('&')
+
+        for posted_data_part in posted_data_parts:
+            posted_data_tuple = posted_data_part.split('=')
+            if len(posted_data_tuple) == 2:
+                post_variable = posted_data_tuple[0]
+                post_value = posted_data_tuple[1]
+
+                if not post_variable in posted_data:
+                    posted_data[post_variable] = []
+
+                posted_data[post_variable].append(post_value)
+
+        return posted_data
+    
+    def get_request_path(self, request):
+        
+        headers = dict(request.headers)
+
+        request_path = headers.get('x-original-url') if headers.get('x-original-url') else '/'
+
+        return request_path
+    
+    def get_json_data(self, request):
+
+        json_keys = []
+        json_values = []
+
+        try:
+            json_data = request.get_json()
+            (json_keys, json_values) = self.analyze_json(json_data)
+        except:
+            pass
+
+        return (json_keys, json_values)
+    
+    def get_request_headers(self, request):
+
+        headers = dict(request.headers)
+
+        return headers
+
+    ####################################################
+    # LOGGING
+    ####################################################
+
+    def log_security_event(self, event_type, source_ip, user = None, details = {}):
+
+        log_data = make_security_log(self.APP_NAME, event_type, source_ip, self.LOG_FORMAT, user, details, False)
+        
+        webhook = False
+        syslog_udp = False
+        syslog_tcp = False
+
+        if self.LOG_FORMAT.lower() in ['json', 'pcb']:
+            path = self.LOG_PATH
+            if not path.startswith('/'):
+                path = '/'+path
+            server_url = f'{self.LOG_PROTOCOL.lower()}://{self.LOG_SERVER}:{self.LOG_PORT}{path}'
+            webhook = True
+
+        elif self.LOG_FORMAT.lower() == 'syslog':
+            if self.LOG_PROTOCOL.lower() == 'udp':
+                syslog_udp = True
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            elif self.LOG_PROTOCOL.lower() == 'tcp':
+                syslog_tcp = True
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        try:
+            if webhook:
+                requests.post(server_url, json=log_data, timeout=1) 
+            elif syslog_udp:
+                sock.sendto(log_data.encode(), (self.LOG_SERVER, self.LOG_PORT))
+            elif syslog_tcp:
+                sock.connect((self.LOG_SERVER, self.LOG_PORT))
+                sock.settimeout(1)
+                sock.send(log_data)
+                sock.close()
+
+        except:
+            pass
 
     
-        
 

@@ -1,3 +1,18 @@
+# v0.6.2
+
+## New features
+- **Support for Azure Functions**
+
+## Improvement
+- Slightly improved SQL injection detection
+
+## Bug fix
+- Fixed XSS engine false positive with some large JSON data
+- Disabled security checks would be handled according to default value 
+
+## Misc
+- Fixed few things in documentation
+
 # v0.6.1
 
 ## New features

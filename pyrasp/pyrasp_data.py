@@ -6,6 +6,12 @@ DATA_VERSION = '1.1.0'
 XSS_MODEL_VERSION = '1.2.0'
 SQLI_MODEL_VERSION = '1.1.0'
 
+#
+# PLATFORMS
+#
+
+CLOUD_FUNCTIONS = ['AWS Lambda', 'Google Cloud Function', 'Azure Function' ]
+
 # 
 # UTILS
 #
@@ -116,6 +122,9 @@ SQL_INJECTIONS_POINTS = [
 ]
 
 SQL_INJECTIONS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_values' ]
+
+SQL_QUOTES = [ '"', "'", '' ]
+
 XSS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_values', 'headers_values', 'referer' ]
 COMMAND_INJECTIONS_VECTORS = [ 'qs_values', 'post_values', 'json_values' ]
 
@@ -139,7 +148,8 @@ DLP_PATTERNS = {
 
 }
 
-
+XSS_NON_ALPHA_PATTERN = '\[[^A-Za-z0-9\]]*\]'
+NON_ALPHA_PATTERN = '^[^A-Za-z0-9]+$'
 
 #
 # DEFAULT CONFIGURATION
