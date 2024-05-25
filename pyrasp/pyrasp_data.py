@@ -3,8 +3,8 @@
 #
 
 DATA_VERSION = '1.1.0'
-XSS_MODEL_VERSION = '1.2.0'
-SQLI_MODEL_VERSION = '1.1.0'
+XSS_MODEL_VERSION = '2.0.0'
+SQLI_MODEL_VERSION = '2.0.0'
 
 #
 # PLATFORMS
@@ -210,10 +210,10 @@ DEFAULT_CONFIG = {
 
     "EXCEPTIONS" : [],
 
-    "XSS_PROBA" : 0.60,
+    "XSS_PROBA" : 0.70,
     "MIN_XSS_LEN": 16,
 
-    "SQLI_PROBA" : 0.725,
+    "SQLI_PROBA" : 0.85,
     "MIN_SQLI_LEN": 8,
 
     "DLP_PHONE_NUMBERS": False,

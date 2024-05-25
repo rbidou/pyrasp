@@ -1,6 +1,6 @@
 [project]
 name = "pyrasp"
-version = "0.6.2"
+version = "0.7.0dev2"
 authors = [
     { name = "Renaud Bidou", email = "renaud@paracyberbellum.io" }
 ]
@@ -24,8 +24,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/rbidou/pyrasp"
+Homepage = "https://pyrasp.paracyberbellum.io"
 Documentation = "https://paracyberbellum.gitbook.io/pyrasp"
+GitHub = "https://github.com/rbidou/pyrasp"
 
 [tool.setuptools.package-data]
 pyrasp = ["data/*"]

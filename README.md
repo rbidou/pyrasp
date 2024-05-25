@@ -1,7 +1,7 @@
 ![](pyrasp.png)
 
 <p>
-    <img src="https://img.shields.io/badge/Version-0.6.2-green?style=for-the-badge" alt="version 0.6.2"/>
+    <img src="https://img.shields.io/badge/Version-0.7.0-green?style=for-the-badge" alt="version 0.7.0"/>
     <a href="https://www.paracyberbellum.io">
         <img src="https://img.shields.io/badge/A%20project%20by-ParaCyberBellum-blue?style=for-the-badge" alt="A project by ParaCyberBellum"/>
     </a>
@@ -20,6 +20,7 @@ One specificity of `pyrasp` relies on the fact that it does not use signatures. 
 # Documentation
 [Full documentation](https://paracyberbellum.gitbook.io/pyrasp)
 <br>[Release Notes](https://github.com/rbidou/pyrasp/blob/main/RELEASE-NOTES.md)
+<br>[Web Site](https://pyrasp.paracyberbellum.io)
 
 # Contacts
 Renaud Bidou - renaud@paracyberbellum.io

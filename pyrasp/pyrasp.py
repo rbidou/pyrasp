@@ -1,4 +1,4 @@
-VERSION = '0.6.2'
+VERSION = '0.7.0'
 
 from pprint import pprint
 import time
@@ -22,7 +22,7 @@ from functools import wraps
 
 # Flask
 try:
-    from flask import request
+    from flask import request, redirect, url_for
     from flask import Response as FlaskResponse
     from flask.wrappers import Response as FlaskResponseType
     from werkzeug.utils import import_string
@@ -308,6 +308,17 @@ class PyRASP():
         'errors': 0,
         'attacks': 0
     }
+
+    # API DATA
+    API_CONFIG = {}
+    API_BLACKLIST = []
+    API_STATUS = {
+        'version': '',
+        'blacklist': 0,
+        'xss_loaded': False,
+        'sqli_loaded': False,
+        'config': 'Default'
+    }
     
     ####################################################
     # CONSTRUCTOR & DESTRUCTOR
@@ -362,6 +373,8 @@ class PyRASP():
             
             if not self.load_cloud_config():
                 self.print_screen('[!] Could not load configuration from cloud server. Running default configuration.', init=True, new_line_up = True)
+            else:
+                self.API_STATUS['config'] = 'Cloud'
 
         # Load configuration file
         if not conf is None:
@@ -370,7 +383,8 @@ class PyRASP():
             self.CONF_FILE = os.environ.get('PYRASP_CONF')
 
         if not self.CONF_FILE is None:
-            self.load_file_config(self.CONF_FILE)
+            if self.load_file_config(self.CONF_FILE):
+                self.API_STATUS['config'] = 'Local'
 
         # Default config customization from 
         if all([
@@ -462,6 +476,10 @@ class PyRASP():
             else:
                 self.print_screen('[+] SQLI model loaded', init=True, new_line_up = False)
 
+        # Agent status
+        self.API_STATUS['version'] = VERSION
+        self.API_STATUS['xss_loaded'] = xss_model_loaded
+        self.API_STATUS['sqli_loaded'] = sqli_model_loaded
 
         # AWS, GCP & Azure
         if self.PLATFORM in CLOUD_FUNCTIONS:
@@ -607,8 +625,7 @@ class PyRASP():
                 remove_blacklist_entries = blacklist_update.get('remove') or []
                 for remove_entry in remove_blacklist_entries:
                     if remove_entry in self.BLACKLIST:
-                        del self.BLACKLIST[remove_entry]
-            
+                        del self.BLACKLIST[remove_entry]           
 
         # Set configuration
         if not error and server_data.get('config'):
@@ -750,6 +767,8 @@ class PyRASP():
             
     def load_file_config(self, conf_file):
 
+        result = True
+
         self.print_screen(f'[+] Loading configuration from {conf_file}', init = True, new_line_up = False)
 
         try:
@@ -757,13 +776,17 @@ class PyRASP():
                 config = json.load(f)
         except Exception as e:
             self.print_screen(f'[!] Error reading {conf_file}: {str(e)}', init = True, new_line_up = False)
+            result = False
         else:
             self.load_config(config)
+
+        return result
    
     def load_config(self, config):
 
         # Load parameters
         config_params = config.get('config') or config
+        self.API_CONFIG = config_params
 
         for key in config_params:
             setattr(self, key, config_params[key])
@@ -780,6 +803,7 @@ class PyRASP():
         config_blacklist = config.get('blacklist')
 
         if config_blacklist:
+
             self.BLACKLIST = config_blacklist
 
         return True
@@ -793,28 +817,41 @@ class PyRASP():
         attack_id = attack['type']
         attack_check = ATTACKS_CHECKS[attack_id]
         attack_details = attack.get('details') or {}
+        attack_payload = None
+        if attack_details and attack_details.get('payload'):
+            attack_payload = attack_details['payload']
+            try:
+                attack_payload_b64 = base64.b64encode(attack_details['payload'].encode()).decode()
+                attack_details['payload'] = attack_payload_b64
+            except:
+                pass
+
         action = None
 
-        # Generic case
+        # Action
+        ## Generic case
         if not attack_id == 0:
             action = self.SECURITY_CHECKS[attack_check] 
-        # Blacklist
+        ## Blacklist
         else:
             action = 2
 
         attack_details['action'] = action
+
+        # Attack type
         if ATTACKS_CODES.get(attack_id):
             attack_details['codes'] = ATTACKS_CODES[attack_id]
 
         if not self.BLACKLIST_OVERRIDE and action == 2:
             self.blacklist_ip(source_ip, timestamp, attack_check)
 
-
+        # Print screen
         try:
-            self.print_screen(f'[!] {ATTACKS[attack_id]}: {attack["details"]["location"]} -> {attack["details"]["payload"]}')
+            self.print_screen(f'[!] {ATTACKS[attack_id]}: {attack["details"]["location"]} -> {attack_payload}')
         except:
             self.print_screen(f'[!] Attack - No details')
     
+        # Log
         if self.LOG_ENABLED:
             self.log_security_event(attack_check, source_ip, None, attack_details)
 
@@ -1735,6 +1772,26 @@ class PyRASP():
 
         return match
 
+    ####################################################
+    # API
+    ####################################################
+
+    def get_config(self):
+
+        return self.API_CONFIG
+    
+    def get_blacklist(self):
+
+        self.API_BLACKLIST = [ i for i in self.BLACKLIST ]
+
+        return self.API_BLACKLIST
+    
+    def get_status(self):
+
+        self.API_STATUS['blacklist'] = len(self.BLACKLIST)
+
+        return self.API_STATUS
+
 class FlaskRASP(PyRASP):
 
     CURRENT_ATTACKS = {}
@@ -1768,8 +1825,9 @@ class FlaskRASP(PyRASP):
             # Send attack status in status code for handling by @after_request
             if not attack == None:
                 attack_id = '::'.join([host, request_method, request_path, source_ip])
-                self.CURRENT_ATTACKS[attack_id] = attack
-
+                self.CURRENT_ATTACKS[attack_id] = attack                
+                return FlaskResponse()
+        
     # Outgoing responses
     def set_after_security_checks(self, app):
         @app.after_request

@@ -1,3 +1,17 @@
+# v0.7.0
+
+## New features
+- PyRASP classes API
+
+## Improvements
+- **Improved ML engines for SQL Injection and XSS detection**
+  - Default SQL Injection detection probabilities raised to 0.85
+  - Default XSS detection probabilities raised to 0.70
+- Attack payloads are now base64 encoded in logs
+
+## Bug fix
+- Flask agent was still processing page, even if attack was detected
+
 # v0.6.2
 
 ## New features
