@@ -2,7 +2,7 @@
 
 ## New features
 - Added detection engine and machine learning score in SQLI and XSS attack logs
-- - Added request path in JSON security logs
+- Added request path in JSON security logs
 
 ## Improvements
 - Imrpoved JSON extraction from headers values
