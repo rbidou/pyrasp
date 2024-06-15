@@ -1,3 +1,19 @@
+# v0.7.1
+
+## New features
+- Added detection engine and machine learning score in SQLI and XSS attack logs
+- - Added request path in JSON security logs
+
+## Improvements
+- Imrpoved JSON extraction from headers values
+- Improved SQL injection grammatical analysis to prevent some false-positive
+- Country identification in logs can be disabled via the RESOLVE_COUNTRY configuration option
+- Leaked data can be logged by setting the DLP_LOG_LEAKED_DATA configuration option to True (default: False)
+
+## Bug fix
+- Some cookie values were not properly processed
+- PyRASP would crash at launch if SQL injection or XSS protections are not activated
+
 # v0.7.0
 
 ## New features

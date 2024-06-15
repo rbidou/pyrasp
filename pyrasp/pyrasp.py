@@ -1,4 +1,4 @@
-VERSION = '0.7.0'
+VERSION = '0.7.1'
 
 from pprint import pprint
 import time
@@ -412,11 +412,10 @@ class PyRASP():
         if not app is None:
             self.register_security_checks(app)
 
-
+        xss_model_loaded = False
         ## XSS & SQLI models loaded only if enabled in configuration
         if self.SECURITY_CHECKS.get('xss'):
             # Load XSS ML model
-            xss_model_loaded = False
             if not dev:
                 xss_model_file = 'xss_model-'+XSS_MODEL_VERSION
             else:
@@ -445,9 +444,9 @@ class PyRASP():
             else:
                 self.print_screen('[+] XSS model loaded', init=True, new_line_up = False)
 
+        sqli_model_loaded = False
         if self.SECURITY_CHECKS.get('sqli'):
             # Load SQLI ML model
-            sqli_model_loaded = False
             if not dev:
                 sqli_model_file = 'sqli_model-'+SQLI_MODEL_VERSION
             else:
@@ -845,6 +844,10 @@ class PyRASP():
         if not self.BLACKLIST_OVERRIDE and action == 2:
             self.blacklist_ip(source_ip, timestamp, attack_check)
 
+        # Path
+        attack_details['path'] = request_path
+
+
         # Print screen
         try:
             self.print_screen(f'[!] {ATTACKS[attack_id]}: {attack["details"]["location"]} -> {attack_payload}')
@@ -1123,6 +1126,7 @@ class PyRASP():
         sql_injection = False
         attack = None
         temp_db = sqlite3.connect(":memory:")
+        sqli_probability = None
 
         # Get relevant vectors
         for vector_type in SQL_INJECTIONS_VECTORS:
@@ -1134,6 +1138,16 @@ class PyRASP():
                 # Identify single word
                 if not re.search('[ +\'"(]', injection):
                     continue
+
+                # Identify quoted data
+                first_char = injection[0]
+                last_char = injection[-1]
+                if first_char in [ '"', "'" ]: 
+                    if last_char == first_char:
+                        quote_char = first_char
+                        if not quote_char in injection[1:-1]:
+                            continue
+
 
                 # Identify only alphanum, space
                 if re.search('^[a-zA-Z0-9 ]+$', injection) and not re.search('\snull\s', injection):
@@ -1232,9 +1246,13 @@ class PyRASP():
                 'type': ATTACK_SQLI,
                 'details': {
                     'location': vector_type,
-                    'payload': injection
+                    'payload': injection,
+                    'engine': 'grammatical analysis'
                 }
             }
+            if not sqli_probability is None:
+                attack['details']['engine'] = 'machine learning'
+                attack['details']['score'] = sqli_probability[1]
 
         return attack
 
@@ -1243,6 +1261,7 @@ class PyRASP():
 
         xss = False
         attack = None
+        xss_probability = None
 
         # Get relevant vectors
         for vector_type in XSS_VECTORS:
@@ -1270,9 +1289,13 @@ class PyRASP():
                 'type': ATTACK_XSS,
                 'details': {
                     'location': vector_type,
-                    'payload': injection
+                    'payload': injection,
+                    'engine': 'format checking'
                 }
             }
+            if not xss_probability is None:
+                attack['details']['engine'] = 'machine learning'
+                attack['details']['score'] = xss_probability[1]
 
         return attack
 
@@ -1387,32 +1410,35 @@ class PyRASP():
 
         attack = None
         payload = None
+        payload_type = None
 
         if payload == None and self.DLP_PHONE_NUMBERS:
-            if self.check_dlp_patterns('phone', content):
-                payload = 'Phone Number'
+            payload = self.check_dlp_patterns('phone', content)
+            payload_type = 'Phone Number'
 
         if payload == None and self.DLP_CC_NUMBERS:
-            if self.check_dlp_patterns('cc', content):
-                payload = 'Credit Card'
+            payload = self.check_dlp_patterns('cc', content)
+            payload_type = 'Credit Card'
 
         if payload == None and self.DLP_PRIVATE_KEYS:
-            if self.check_dlp_patterns('key', content):
-                payload = 'Private Key'
+            payload = self.check_dlp_patterns('key', content)
+            payload_type = 'Private Key'
 
         if payload == None and self.DLP_HASHES:
-            if self.check_dlp_patterns('hash', content):
-                payload = 'Private Key'
+            payload = self.check_dlp_patterns('hash', content)
+            payload_type = 'Private Key'
 
         if payload == None and self.DLP_WINDOWS_CREDS:
-            if self.check_dlp_patterns('windows', content):
-                payload = 'Windows Credentials'
+            payload = self.check_dlp_patterns('windows', content)
+            payload_type = 'Windows Credentials'
 
         if payload == None and self.DLP_LINUX_CREDS:
-            if self.check_dlp_patterns('linux', content):
-                payload = 'Linux Credentials'
+            payload = self.check_dlp_patterns('linux', content)
+            payload_type = 'Linux Credentials'
 
         if payload:
+            if not self.DLP_LOG_LEAKED_DATA:
+                payload = payload_type
             attack = {
                 'type': ATTACK_DLP,
                 'details': {
@@ -1425,14 +1451,15 @@ class PyRASP():
     
     def check_dlp_patterns(self, patterns, content):
 
-        result = False
+        leaked = None
 
         for pattern in DLP_PATTERNS[patterns]:
-            if re.search(pattern, content, re.IGNORECASE | re.MULTILINE):
-                result = True
+            match = re.search(pattern, content, re.IGNORECASE | re.MULTILINE)
+            if not match is None:
+                leaked = match.group()
                 break
 
-        return result
+        return leaked
         
     ####################################################
     # RESPONSE PROCESSING
@@ -1571,7 +1598,7 @@ class PyRASP():
                     if len(cookie_parts) == 1:
                         cookie_value = cookie_parts[0].strip()
                     else:
-                        cookie_value = cookie_parts[1].strip()
+                        cookie_value = '='.join(cookie_parts[1:]).strip()
                     vectors['cookies'].extend(self.decode_value(cookie_value))
                 
             # User Agent
@@ -1587,6 +1614,19 @@ class PyRASP():
                 vectors['headers_names'].append(header)
                 vectors['headers_values'].append(headers[header])
 
+        for vector_type in vectors:
+
+            vector_payloads = vectors[vector_type]
+            for payload in vector_payloads:
+                try:
+                    json_payload = json.loads(payload)
+                    for key in json_payload:
+                        vectors['json_keys'].append(key)
+                        vectors['json_values'].append(json_payload[key])
+                    vectors[vector_type].remove(payload)
+                except: 
+                    pass
+                    
         return vectors
     
     # Remove exceptions from vectors

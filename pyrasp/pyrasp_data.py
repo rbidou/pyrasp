@@ -121,7 +121,7 @@ SQL_INJECTIONS_POINTS = [
     'insert into test values(null,{{vector}})',
 ]
 
-SQL_INJECTIONS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_values' ]
+SQL_INJECTIONS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_values', 'user_agent', 'referer' ]
 
 SQL_QUOTES = [ '"', "'", '' ]
 
@@ -198,22 +198,28 @@ DEFAULT_CONFIG = {
     "BLACKLIST_SHARE" : False,
 
     "DECOY_ROUTES" : [ 
-        "/admin", "/login", "/logs", "/version",    
-        "/cgi-bin/",                                
-        "/remote/",                                 
-        "/.env",                                    
-        "/owa/",                                    
-        "/autodiscover", "/Autodiscover",           
-        "/.git/",                                   
-        "/.aws/ "                                 
+        [ "/admin", "ends" ],
+        [ "/login", "ends" ],
+        [ "/logs", "ends" ],
+        [ "/version", "ends" ],   
+        [ "/cgi-bin/", "starts" ],                      
+        [ "/remote/", "starts" ],                     
+        [ "/.env", "starts" ],                     
+        [ "/owa/", "starts" ],                        
+        [ "/autodiscover", "starts" ],
+        [ "/Autodiscover", "starts" ],
+        [ "/.git/", "starts" ],                
+        [ "/.aws/ ", "starts" ],
     ],
 
     "EXCEPTIONS" : [],
 
     "XSS_PROBA" : 0.70,
+    "XSS_LOG_PROBA": 0.5,
     "MIN_XSS_LEN": 16,
 
     "SQLI_PROBA" : 0.85,
+    "SQLI_LOG_PROBA": 0.6,
     "MIN_SQLI_LEN": 8,
 
     "DLP_PHONE_NUMBERS": False,
@@ -222,6 +228,7 @@ DEFAULT_CONFIG = {
     "DLP_HASHES": False,
     "DLP_WINDOWS_CREDS": False,
     "DLP_LINUX_CREDS": False,
+    "DLP_LOG_LEAKED_DATA": False,
 
     "LOG_ENABLED": False,
     "LOG_FORMAT": "Syslog",
