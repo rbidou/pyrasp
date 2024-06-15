@@ -5,7 +5,7 @@
 - Added request path in JSON security logs
 
 ## Improvements
-- Imrpoved JSON extraction from headers values
+- Improved JSON extraction from headers values
 - Improved SQL injection grammatical analysis to prevent some false-positive
 - Country identification in logs can be disabled via the RESOLVE_COUNTRY configuration option
 - Leaked data can be logged by setting the DLP_LOG_LEAKED_DATA configuration option to True (default: False)
