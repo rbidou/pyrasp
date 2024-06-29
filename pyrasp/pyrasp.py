@@ -1,4 +1,4 @@
-VERSION = '0.7.1'
+VERSION = '0.7.2'
 
 from pprint import pprint
 import time
@@ -18,6 +18,7 @@ import sys
 from functools import partial
 import psutil
 import os
+#import jwt
 from functools import wraps
 
 # Flask
@@ -42,7 +43,7 @@ except:
 try:
     from django.conf import settings as django_settings
     from django.http import HttpResponse
-    from django.urls import resolve
+    from django.urls import resolve, get_resolver, URLPattern
 
 except:
     pass
@@ -73,7 +74,8 @@ try:
     from pyrasp.pyrasp_data import COMMAND_INJECTIONS_VECTORS
     from pyrasp.pyrasp_data import DLP_PATTERNS
     from pyrasp.pyrasp_data import PATTERN_CHECK_FUNCTIONS
-    from pyrasp.pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE
+    from pyrasp.pyrasp_data import B64_PATTERN
+    from pyrasp.pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE, ATTACK_ZTAA
 except:
     from pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION
     from pyrasp_data import CLOUD_FUNCTIONS
@@ -84,7 +86,8 @@ except:
     from pyrasp_data import COMMAND_INJECTIONS_VECTORS
     from pyrasp_data import DLP_PATTERNS
     from pyrasp_data import PATTERN_CHECK_FUNCTIONS
-    from pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE
+    from pyrasp_data import B64_PATTERN
+    from pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE, ATTACK_ZTAA
 
 # IP
 IP_COUNTRY = {}
@@ -343,7 +346,7 @@ class PyRASP():
         # Get Routes
         #
 
-        self.get_routes(app)
+        self.ROUTES = self.get_app_routes(app)
 
         #
         # Configuration
@@ -423,7 +426,7 @@ class PyRASP():
 
             ## From source
             try:
-                self.xss_model = pickle.load(open('ml-engines/'+xss_model_file,'rb'))
+                self.xss_model = pickle.load(open('data/'+xss_model_file,'rb'))
             except:
                 pass
             else:
@@ -454,7 +457,7 @@ class PyRASP():
 
             ## From source
             try:
-                self.sqli_model = pickle.load(open('ml-engines/'+sqli_model_file,'rb'))
+                self.sqli_model = pickle.load(open('data/'+sqli_model_file,'rb'))
             except:
                 pass
             else:
@@ -696,8 +699,8 @@ class PyRASP():
     # ROUTES
     ####################################################
             
-    def get_routes(self, app):
-        pass
+    def get_app_routes(self, app):
+        return {}
 
     ####################################################
     # CONFIGURATION
@@ -710,7 +713,7 @@ class PyRASP():
         self.print_screen(f'[+] Loading configuration from {self.CLOUD_URL}', init = True, new_line_up = False)
 
         #config_url = f'{self.cloud_protocol}://{self.cloud_server}:{self.cloud_port}/rasp/connect'
-        data = { 'key': self.KEY, 'version': VERSION, 'platform': self.PLATFORM }
+        data = { 'key': self.KEY, 'version': VERSION, 'platform': self.PLATFORM, 'routes': self.ROUTES }
 
         error = False
         
@@ -790,7 +793,7 @@ class PyRASP():
         for key in config_params:
             setattr(self, key, config_params[key])
 
-        # Setting defautl security checks
+        # Setting default security checks
         for security_check in DEFAULT_SECURITY_CHECKS:
             if config_params['SECURITY_CHECKS'].get(security_check) == None:
                 config_params['SECURITY_CHECKS'][security_check] = DEFAULT_SECURITY_CHECKS[security_check]
@@ -852,7 +855,7 @@ class PyRASP():
         try:
             self.print_screen(f'[!] {ATTACKS[attack_id]}: {attack["details"]["location"]} -> {attack_payload}')
         except:
-            self.print_screen(f'[!] Attack - No details')
+            self.print_screen(f'[!] {ATTACKS[attack_id]}: No details')
     
         # Log
         if self.LOG_ENABLED:
@@ -887,6 +890,11 @@ class PyRASP():
             if not self.BLACKLIST_OVERRIDE:
                 attack = self.check_blacklist(source_ip, timestamp)
             
+            # Check Zero-Trust
+            if attack == None:
+                if self.SECURITY_CHECKS.get('ztaa'):
+                    attack = self.check_ztaa(request)
+
             # Check host
             if attack == None:
                 if self.SECURITY_CHECKS.get('spoofing') and len(self.HOSTS) > 0:
@@ -927,8 +935,6 @@ class PyRASP():
                     inject_vectors = self.get_vectors(request)
                     inject_vectors = self.remove_exceptions(inject_vectors)
                     
-
-
                 # Check headers
                 if attack == None:
                     if self.SECURITY_CHECKS.get('headers'):
@@ -1007,6 +1013,68 @@ class PyRASP():
     ####################################################
     # SECURITY FUNCTIONS
     ####################################################
+
+    # Check Zero-Trust
+    def check_ztaa(self, request):
+
+        return None
+    
+        '''
+        attack = None
+        attack_location = None
+        attack_payload = None
+        ztaa_jwt = None
+        ztaa_key = self.ZTAA_KEY
+
+        headers = self.get_request_headers(request)
+
+        # Check ZTAA JWT
+
+        ztaa_key_header_name = self.ZTAA_HEADER
+        ztaa_valid = True
+
+        for request_header in headers:
+            if request_header.lower() == ztaa_key_header_name.lower():
+                ztaa_jwt = headers[request_header]
+                break
+
+        if ztaa_jwt is None:
+            ztaa_valid = False
+
+        if ztaa_valid and len(ztaa_key) > 0:
+        
+            try:
+                ztaa_assertion = jwt.decode(ztaa_jwt, ztaa_key, algorithms=['HS512'])
+            except Exception as e:
+                ztaa_valid = False
+
+        if not ztaa_valid:
+            attack_location = 'ztaa_jwt'
+            attack_payload = 'Invalid Assertion'
+
+        if not ztaa_valid:
+            attack = {
+                'type': ATTACK_ZTAA,
+                'details': {
+                    'location': attack_location,
+                    'payload': attack_payload
+                }
+            }
+
+        # Check browser version
+        if attack is None and self.ZTAA_BROWSER_VERSION:
+            if not ztaa_assertion.get('latest'):
+                attack = {
+                'type': ATTACK_ZTAA,
+                'details': {
+                    'location': 'browser_version',
+                    'payload': ztaa_assertion.get('browser') or 'Invalid browser'
+                }
+            }
+
+
+        return attack
+        '''
 
     # Check if a rule matches the request
     def check_route(self, request, request_method, request_path):
@@ -1338,7 +1406,6 @@ class PyRASP():
                     'location': 'param',
                     'payload': hpp_param
                 }
-
             }
 
         return attack
@@ -1356,7 +1423,7 @@ class PyRASP():
             for injection in vectors[vector_type]:
 
                 command_pattern = '(?:[&;|]|\$IFS)+\s*(\w+)'
-                commands = re.findall(command_pattern, injection) or []
+                commands = re.findall(command_pattern, str(injection)) or []
 
                 for command in commands:
                     if shutil.which(command):
@@ -1584,7 +1651,7 @@ class PyRASP():
         vectors['json_keys'] = json_keys
 
         for json_value in json_values:
-            vectors['json_values'].extend(self.decode_value(json_value))    
+            vectors['json_values'].extend(self.decode_value(json_value, decode=True, b64=False))    
 
         # Headers
         headers = self.get_request_headers(request)
@@ -1703,27 +1770,100 @@ class PyRASP():
         keys = []
         values = []
 
+        pprint(structure)
+
+        # List
         if type(structure) is list:
             for el in structure:
+
+                # Element is a structure
                 if any( [ type(el) is list, type(el) is dict ]):
                     (new_keys, new_values) = self.analyze_json(el)
                     keys.extend(new_keys)
                     values.extend(new_values)
+
+                # Element is a value
                 else:
+
                     values.append(str(el))
+
+                    # B64 Decoding
+                    if self.DECODE_B64 and re.search('^'+B64_PATTERN+'$', str(el)):
+                
+                        # B64 value double-check
+                        try:
+                            b64_value_bytes = base64.b64decode(str(el))
+                            b64_value = b64_value_bytes.decode()
+
+                        ## Not B64
+                        except:
+                            pass
+
+                        ## B64
+                        else:
+
+                            ## Check if JSON
+                            try:
+                                json_value = json.loads(b64_value)
+                            ### Not JSON
+                            except:
+                                values.append(b64_value)
+                            ### JSON
+                            else:
+                                (b64_keys, b64_values) = self.analyze_json(json_value)
+                                keys.extend(b64_keys)
+                                values.extend(b64_values)
+
             return(keys, values)
+        
+
+        # Dictionary
         elif type(structure) is dict:
+
             for new_key in structure:
-                keys.extend(new_key)
+                keys.append(new_key)
                 el = structure[new_key]
+
+                # Element is a structure
                 if any( [ type(el) is list, type(el) is dict ]):
                     (new_keys, new_values) = self.analyze_json(el)
                     keys.extend(new_keys)
                     values.extend(new_values)
+
+                # Element is a value
                 else:
+
                     values.append(str(el))
+
+                    # B64 Decoding
+                    if self.DECODE_B64 and re.search('^'+B64_PATTERN+'$', str(el)):
+                
+                        # B64 value double-check
+                        try:
+                            b64_value_bytes = base64.b64decode(str(el))
+                            b64_value = b64_value_bytes.decode()
+
+                        ## Not B64
+                        except:
+                            pass
+
+                        ## B64
+                        else:
+
+                            ## Check if JSON
+                            try:
+                                json_value = json.loads(b64_value)
+                            ### Not JSON
+                            except:
+                                values.append(b64_value)
+                            ### JSON
+                            else:
+                                (b64_keys, b64_values) = self.analyze_json(json_value)
+                                keys.extend(b64_keys)
+                                values.extend(b64_values)
+  
             return(keys, values)
-            
+        
         return (keys, values)
 
     # Identifies and decode b64 values 
@@ -1731,9 +1871,7 @@ class PyRASP():
 
         b64_values = []
 
-        values = re.findall('(?:[A-Za-z0-9+/]{4})+(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?', param_value)
-
-
+        values = re.findall(B64_PATTERN, param_value)
 
         for value in values:
             try:
@@ -1820,6 +1958,37 @@ class PyRASP():
 
         return self.API_CONFIG
     
+    def set_config(self, config_params):
+
+        results = { 'success' : [], 'fail': [] }
+
+        for key in config_params:
+
+            if not key.startswith('SECURITY_CHECKS'):
+                if not key in self.API_CONFIG:
+                    results['fail'].append(key)
+                    continue
+                else:
+                    setattr(self, key, config_params[key])
+                    self.API_CONFIG[key] = config_params[key]
+                    results['success'].append(key)
+
+            else:
+                try:
+                    security_check = key.split('.')[1]
+                except:
+                    results['fail'].append(key)
+                else:
+                    if not security_check in DEFAULT_SECURITY_CHECKS:
+                        results['fail'].append(key)
+                        continue
+                    else:
+                        self.SECURITY_CHECKS[security_check] = config_params[key]
+                        self.API_CONFIG['SECURITY_CHECKS'][security_check] = config_params[key]
+                        results['success'].append(key)
+
+        return results
+                
     def get_blacklist(self):
 
         self.API_BLACKLIST = [ i for i in self.BLACKLIST ]
@@ -1832,6 +2001,10 @@ class PyRASP():
 
         return self.API_STATUS
 
+    def get_routes(self):
+
+        return self.ROUTES
+
 class FlaskRASP(PyRASP):
 
     CURRENT_ATTACKS = {}
@@ -1843,6 +2016,26 @@ class FlaskRASP(PyRASP):
         if self.LOG_ENABLED or self.BEACON:
             signal.signal(signal.SIGINT, partial(handle_kb_interrupt, self))
             
+    ####################################################
+    # ROUTES
+    ####################################################
+            
+    def get_app_routes(self, app):
+
+        app_routes = {}
+
+        for rule in app.url_map.iter_rules():
+
+            methods = list(rule.methods)
+            endpoint = str(rule.endpoint)
+            path = str(rule)
+            app_routes[endpoint] = { 
+                'methods': methods,
+                'path': path
+            }
+
+        return app_routes
+    
     ####################################################
     # SECURITY CHECKS
     ####################################################
@@ -2113,6 +2306,26 @@ class FastApiRASP(PyRASP):
             return response
         
     ####################################################
+    # ROUTES
+    ####################################################
+            
+    def get_app_routes(self, app):
+
+        app_routes = {}
+
+        for route in app.routes:
+            endpoint = route.name
+            methods = list(route.methods)
+            path = route.path
+
+            app_routes[endpoint] = {
+                'methods': methods,
+                'path': path
+            }
+
+        return app_routes
+
+    ####################################################
     # SECURITY CHECKS
     ####################################################
 
@@ -2367,6 +2580,34 @@ class DjangoRASP(PyRASP):
         response = self.process_response(response, inbound_attack or outbound_attack, log_only = log_only)
 
         return response
+
+    ####################################################
+    # ROUTES
+    ####################################################
+            
+    def get_app_routes(self, app):
+
+        app_routes = {}
+
+        count = 0
+
+        for url_pattern in get_resolver().url_patterns:
+
+            if not isinstance(url_pattern, URLPattern):
+                continue
+
+            methods = []
+            path = str(url_pattern.pattern)
+            endpoint = str(url_pattern.lookup_str)
+
+            app_routes[endpoint] = { 
+                'methods': methods,
+                'path': path
+            }
+
+            count += 1
+
+        return app_routes
 
     ####################################################
     # SECURITY FUNCTIONS

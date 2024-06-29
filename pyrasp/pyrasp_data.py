@@ -35,7 +35,8 @@ ATTACKS = [
     'Command Injection',    # 9
     'Forbidden Header',     # 10
     'Data Leak Prevention', # 11
-    'Brute Force'           # 12
+    'Brute Force',          # 12
+    'Zero-Trust'            # 13
 ]
 
 BRUTE_FORCE_ATTACKS = [ 1, 3, 5, 10 ]
@@ -54,6 +55,7 @@ ATTACK_CMD = 9
 ATTACK_HEADER = 10
 ATTACK_DLP = 11
 ATTACK_BRUTE = 12
+ATTACK_ZTAA = 13
 
 ATTACKS_CHECKS = [
     'blacklist',
@@ -68,7 +70,8 @@ ATTACKS_CHECKS = [
     'command',
     'headers',
     'dlp',
-    'brute'
+    'brute',
+    'ztaa'
 ]
 
 ATTACKS_CODES = {
@@ -85,28 +88,9 @@ ATTACKS_CODES = {
     ATTACK_HEADER: ['PCB010'],
     ATTACK_DLP: ['T1052', 'PCB011'],
     ATTACK_BRUTE : ['T1110', 'PCB012'],
+    ATTACK_ZTAA: [ 'PCB013' ]
 }
-
-'''
-ATTACKS_CODES = {
-    'blacklist': ['', 'PCB000'],
-    'path': ['T1592.002', 'PCB001'],
-    'flood': ['T1498', 'PCB002'],
-    'spoofing': ['T1594', 'PCB003'],
-    'decoy': ['T1592.002', 'PCB004'],
-    'format': ['', 'PCB005'],
-    'sqli': ['T1111', 'PCB006'],
-    'xss': ['T1059.007', 'PCB007'],
-    'hpp': ['T1211', 'PCB008' ],
-    'command': ['T1059', 'PCB009'],
-    'headers': ['', 'PCB010'],
-    'dlp': ['T1052', 'PCB011'],
-    'brute': ['T1110', 'PCB012'],
-}
-'''
-
-
-    
+   
 SQL_INJECTIONS_SIGNATURES = [ '@@VERSION', '@@DATABASE', 'master\.\.xp_cmdshell', 'updatexml\(']
 SQL_INJECTIONS_FP = ['^[a-zA-Z][\\w]+\\s*&\\s*[a-zA-Z][\\w]+$']
 
@@ -151,6 +135,8 @@ DLP_PATTERNS = {
 XSS_NON_ALPHA_PATTERN = '\[[^A-Za-z0-9\]]*\]'
 NON_ALPHA_PATTERN = '^[^A-Za-z0-9]+$'
 
+B64_PATTERN = '(?:[A-Za-z0-9+/]{4})+(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?'
+
 #
 # DEFAULT CONFIGURATION
 #
@@ -168,7 +154,8 @@ DEFAULT_SECURITY_CHECKS = {
     "command": 2,
     "method": 0,
     "dlp": 0,
-    "brute": 2
+    "brute": 2,
+    "ztaa": 0
 }
 
 DEFAULT_CONFIG = {
@@ -180,7 +167,7 @@ DEFAULT_CONFIG = {
     "VERBOSE" : 0,
     "DECODE_B64" : True,
 
-    "SECURITY_CHECKS" : { },    
+    "SECURITY_CHECKS" : DEFAULT_SECURITY_CHECKS,    
 
     "WHITELIST": [],
     "IGNORE_PATHS" : ["^/favicon.ico$","^/robots.txt$","^/sitemap\.(txt|xml)$"],
@@ -244,7 +231,10 @@ DEFAULT_CONFIG = {
     "BEACON": False,
     "TELEMETRY_DATA": False,
     "BEACON_URL": None,
-    "BEACON_DELAY": 30
-    
+    "BEACON_DELAY": 30,
+
+    "ZTAA_KEY_HEADER": "pcb-ztaa",
+    "ZTAA_KEY": "",
+    "ZTAA_BROWSER_VERSION": False
 }
 

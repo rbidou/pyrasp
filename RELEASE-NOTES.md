@@ -1,3 +1,18 @@
+# v0.7.2
+
+## New features
+- Application routes are sent when first connecting to configuration server (cloud operations)
+- New API functions:
+  - set_config(): change configuration from the protected application
+  - get_routes(): get routes defined in the applications
+
+## Improvements
+- Handling of nested base64-encoded JSON structures
+- Added explicit versions in dependencies requirements
+
+## Bug fix
+- No security engine was activated when running with default configuration
+
 # v0.7.1
 
 ## New features
