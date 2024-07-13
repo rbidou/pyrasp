@@ -1,3 +1,18 @@
+# v0.8.0
+
+## New features
+- **Zero-Trust Application Access**
+
+## Improvements
+- Noticeably improved documentation by fixing typos, dead links, etc.
+
+## Bug fix
+- Fixed several issues in agents for AWS, GCP and Azure serverless functions
+- XSS check would fail while testing very specific JSON content
+
+## License
+- License changed to **CC BY-NC-SA 4.0** (https://creativecommons.org/licenses/by-nc-sa/4.0/)
+
 # v0.7.2
 
 ## New features

@@ -1,4 +1,4 @@
-VERSION = '0.7.2'
+VERSION = '0.8.0'
 
 from pprint import pprint
 import time
@@ -18,7 +18,7 @@ import sys
 from functools import partial
 import psutil
 import os
-#import jwt
+import jwt
 from functools import wraps
 
 # Flask
@@ -1017,14 +1017,10 @@ class PyRASP():
     # Check Zero-Trust
     def check_ztaa(self, request):
 
-        return None
-    
-        '''
         attack = None
         attack_location = None
         attack_payload = None
         ztaa_jwt = None
-        ztaa_key = self.ZTAA_KEY
 
         headers = self.get_request_headers(request)
 
@@ -1041,12 +1037,26 @@ class PyRASP():
         if ztaa_jwt is None:
             ztaa_valid = False
 
-        if ztaa_valid and len(ztaa_key) > 0:
-        
-            try:
-                ztaa_assertion = jwt.decode(ztaa_jwt, ztaa_key, algorithms=['HS512'])
-            except Exception as e:
-                ztaa_valid = False
+        if ztaa_valid:
+
+            ztaa_valid = False
+
+            if not self.ZTAA_KEYS is None:
+
+                if not isinstance(self.ZTAA_KEYS, list):
+                    ztaa_keys = [ self.ZTAA_KEYS ]
+                else:
+                    ztaa_keys = self.ZTAA_KEYS
+
+                for ztaa_key in ztaa_keys:
+
+                    try:
+                        ztaa_assertion = jwt.decode(ztaa_jwt, ztaa_key, algorithms=['HS512'])
+                    except Exception as e:
+                        pass
+                    else:
+                        ztaa_valid = True
+                        break
 
         if not ztaa_valid:
             attack_location = 'ztaa_jwt'
@@ -1074,7 +1084,6 @@ class PyRASP():
 
 
         return attack
-        '''
 
     # Check if a rule matches the request
     def check_route(self, request, request_method, request_path):
@@ -1293,7 +1302,7 @@ class PyRASP():
 
                         break
 
-                if len(injection) < self.MIN_SQLI_LEN:
+                if len(str(injection)) < self.MIN_SQLI_LEN:
                     continue
 
                 # Machine Learning check
@@ -1338,7 +1347,7 @@ class PyRASP():
             for injection in vectors[vector_type]:
 
                 # Requires minimum_length
-                if len(injection) > self.MIN_XSS_LEN:
+                if len(str(injection)) > self.MIN_XSS_LEN:
 
                     if re.match(NON_ALPHA_PATTERN, injection) or len(re.findall(XSS_NON_ALPHA_PATTERN, injection)) > 8:
                         xss = True
@@ -2764,7 +2773,7 @@ class LambdaRASP(PyRASP):
             response_content_structure = response.get('body') or {}
             response_content = json.dumps(response_content_structure)
 
-            status_code = response.get('statusCode')
+            status_code = response.get('statusCode') or self.DENY_STATUS_CODE
             inbound_attack_type = inbound_attack['type'] if inbound_attack else None
 
             # Analyze response
@@ -3027,6 +3036,13 @@ class GcpRASP(FlaskRASP):
             return response
             
         return decorator
+    
+    ####################################################
+    # ROUTES
+    ####################################################
+            
+    def get_app_routes(self, app):
+        return {}
     
     ####################################################
     # RESPONSE PROCESSING
