@@ -1,4 +1,4 @@
-# v0.8.0
+# v0.8.1
 
 ## New features
 - **Zero-Trust Application Access**
@@ -12,6 +12,9 @@
 
 ## License
 - License changed to **CC BY-NC-SA 4.0** (https://creativecommons.org/licenses/by-nc-sa/4.0/)
+
+# v0.8.0
+Broken dependencies - Removed
 
 # v0.7.2
 
