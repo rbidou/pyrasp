@@ -1,7 +1,7 @@
 ![](pyrasp.png)
 
 <p>
-    <img src="https://img.shields.io/badge/Version-0.8.1-green?style=for-the-badge" alt="version 0.8.1"/>
+    <img src="https://img.shields.io/badge/Version-0.8.2-green?style=for-the-badge" alt="version 0.8.2"/>
     <a href="https://www.paracyberbellum.io">
         <img src="https://img.shields.io/badge/A%20project%20by-ParaCyberBellum-blue?style=for-the-badge" alt="A project by ParaCyberBellum"/>
     </a>
@@ -11,7 +11,7 @@
 </p>
 
 # What is PyRASP ?
-`pyrasp` is a **Runtime Application Self Protection** package for Python-based Web Servers (Flask, FastAPI and Django) and Serverless Functions (AWS Lambda, Google Cloud Functions). It protects against the main attacks web applications are exposed to, from within the application. It is also capable of providing basic telemetry such as cpu and memory usage, as well as requests count.
+`pyrasp` is a **Runtime Application Self Protection** package for Python-based Web Servers (Flask, FastAPI and Django) and Serverless Functions (AWS Lambda, Azure and Google Cloud Functions). It protects against the main attacks web applications are exposed to, from within the application. It is also capable of providing basic telemetry such as cpu and memory usage, as well as requests count. Additionally, `pyrasp` implements Zero-Trust Application Access for critical applications, ensuring only up-to-date authorized browsers can connect.
 
 It can operate using a local configuration file or get it from a remote/cloud server. Logs and telemetry (optional) can be sent to remote servers as well, and threats information can be shared across agents.
 

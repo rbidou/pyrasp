@@ -92,7 +92,7 @@ ATTACKS_CODES = {
 }
    
 SQL_INJECTIONS_SIGNATURES = [ '@@VERSION', '@@DATABASE', 'master\.\.xp_cmdshell', 'updatexml\(']
-SQL_INJECTIONS_FP = ['^[a-zA-Z][\\w]+\\s*&\\s*[a-zA-Z][\\w]+$']
+SQL_INJECTIONS_FP = ['^[a-zA-Z][\\w]+\\s*&\\s*[a-zA-Z][\\w]+$','^\\d{4}-\\d{2}-\\d{2}\\s\\d{2}:\\d{2}:\\d{2}$']
 
 SQL_INJECTIONS_POINTS = [
     'select * from test where id={{vector}}',

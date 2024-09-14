@@ -1,3 +1,18 @@
+# 0.8.2
+
+## New feature
+- Attack details display with verbose level = 100+
+
+## Improvements
+- Improved JSON data analysis recursion
+- Lowered TCP logs connection timeout
+
+## Bug fix
+- Removed a debug output when analyzing json data
+- Specific payloads may crash XSS detection engine
+- Fixed an SQL Injection false positive
+- Fixed requirements.txt for build from sources
+
 # v0.8.1
 
 ## New features

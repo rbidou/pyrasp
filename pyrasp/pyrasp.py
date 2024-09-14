@@ -1,4 +1,4 @@
-VERSION = '0.8.1'
+VERSION = '0.8.2'
 
 from pprint import pprint
 import time
@@ -224,13 +224,14 @@ def log_thread(rasp_instance, input, server, port, format = 'syslog', protocol =
         elif protocol.lower() == 'tcp':
             syslog_tcp = True
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1)
 
     for log_data in iter(input.get, '--STOP--'):
 
         try:
 
             if webhook:
-                requests.post(server_url, json=log_data, timeout=3) 
+                requests.post(server_url, json=log_data, timeout=1) 
             elif syslog_udp:
                 sock.sendto(log_data.encode(), (server, port))
             elif syslog_tcp:
@@ -854,6 +855,7 @@ class PyRASP():
         # Print screen
         try:
             self.print_screen(f'[!] {ATTACKS[attack_id]}: {attack["details"]["location"]} -> {attack_payload}')
+            self.print_screen(f'[!] {attack}', level = 100)
         except:
             self.print_screen(f'[!] {ATTACKS[attack_id]}: No details')
     
@@ -1339,6 +1341,7 @@ class PyRASP():
         xss = False
         attack = None
         xss_probability = None
+        injectyion = None
 
         # Get relevant vectors
         for vector_type in XSS_VECTORS:
@@ -1346,14 +1349,16 @@ class PyRASP():
             # Get request values
             for injection in vectors[vector_type]:
 
-                # Requires minimum_length
-                if len(str(injection)) > self.MIN_XSS_LEN:
+                str_injection = str(injection)
 
-                    if re.match(NON_ALPHA_PATTERN, injection) or len(re.findall(XSS_NON_ALPHA_PATTERN, injection)) > 8:
+                # Requires minimum_length
+                if len(str_injection) > self.MIN_XSS_LEN:
+
+                    if re.match(NON_ALPHA_PATTERN, str_injection) or len(re.findall(XSS_NON_ALPHA_PATTERN, str_injection)) > 8:
                         xss = True
                         break
 
-                    xss_probability = self.xss_model.predict_proba([injection.lower()])[0]
+                    xss_probability = self.xss_model.predict_proba([str_injection.lower()])[0]
                     if xss_probability[1] > self.XSS_PROBA:
                         xss = True
                         break
@@ -1779,8 +1784,6 @@ class PyRASP():
         keys = []
         values = []
 
-        pprint(structure)
-
         # List
         if type(structure) is list:
             for el in structure:
@@ -1794,7 +1797,7 @@ class PyRASP():
                 # Element is a value
                 else:
 
-                    values.append(str(el))
+                    is_b64 = False
 
                     # B64 Decoding
                     if self.DECODE_B64 and re.search('^'+B64_PATTERN+'$', str(el)):
@@ -1811,6 +1814,8 @@ class PyRASP():
                         ## B64
                         else:
 
+                            is_b64 = True
+
                             ## Check if JSON
                             try:
                                 json_value = json.loads(b64_value)
@@ -1822,6 +1827,11 @@ class PyRASP():
                                 (b64_keys, b64_values) = self.analyze_json(json_value)
                                 keys.extend(b64_keys)
                                 values.extend(b64_values)
+
+                    if not is_b64:
+
+                        values.append(str(el))
+
 
             return(keys, values)
         
@@ -1842,7 +1852,7 @@ class PyRASP():
                 # Element is a value
                 else:
 
-                    values.append(str(el))
+                    is_b64 = False
 
                     # B64 Decoding
                     if self.DECODE_B64 and re.search('^'+B64_PATTERN+'$', str(el)):
@@ -1859,6 +1869,8 @@ class PyRASP():
                         ## B64
                         else:
 
+                            is_b64 = True
+
                             ## Check if JSON
                             try:
                                 json_value = json.loads(b64_value)
@@ -1870,6 +1882,10 @@ class PyRASP():
                                 (b64_keys, b64_values) = self.analyze_json(json_value)
                                 keys.extend(b64_keys)
                                 values.extend(b64_values)
+
+                    if not is_b64:
+
+                        values.append(str(el))
   
             return(keys, values)
         
@@ -2221,7 +2237,7 @@ class FlaskRASP(PyRASP):
         try:
             json_data = request.get_json(force=True)
             (json_keys, json_values) = self.analyze_json(json_data)
-        except:
+        except Exception as e:
             pass
 
         return (json_keys, json_values)
@@ -2964,7 +2980,8 @@ class LambdaRASP(PyRASP):
     
     def get_request_headers(self, request):
 
-        headers = request.get('headers') or {}
+        #headers = request.get('headers') or {}
+        headers = {}
 
         return headers
         
