@@ -1,7 +1,7 @@
 ![](pyrasp.png)
 
 <p>
-    <img src="https://img.shields.io/badge/Version-0.8.2-green?style=for-the-badge" alt="version 0.8.2"/>
+    <img src="https://img.shields.io/badge/Version-0.8.3-green?style=for-the-badge" alt="version 0.8.3"/>
     <a href="https://www.paracyberbellum.io">
         <img src="https://img.shields.io/badge/A%20project%20by-ParaCyberBellum-blue?style=for-the-badge" alt="A project by ParaCyberBellum"/>
     </a>
@@ -16,6 +16,9 @@
 It can operate using a local configuration file or get it from a remote/cloud server. Logs and telemetry (optional) can be sent to remote servers as well, and threats information can be shared across agents.
 
 One specificity of `pyrasp` relies on the fact that it does not use signatures. Instead it will leverage decoys, thresholds, system and application internals, machine learning and grammatical analysis.
+
+> Version 0.8.3 is not provided for AWS Lambda Functions. 
+> Support will be provided in next version.
 
 # Documentation
 [Full documentation](https://paracyberbellum.gitbook.io/pyrasp)

@@ -1,3 +1,20 @@
+# 0.8.3
+
+## New features
+- New XSS and SQL injection machine learning engines
+
+## Improvements
+- SQL Injection grammatical analysis was removed to improve performances and lower false-positive rate
+
+## Bug fix
+- XSS and SQL injection tests won't fail when model is not loaded
+- Fix Base64 decoding, which was a little bit too invasive 
+- Log only mode was sending empty response on Flask 
+
+## Limitation
+- Version 0.8.3 is not available on AWS Lambda Functions
+- AWS Lambda support will be provided in next version 
+
 # 0.8.2
 
 ## New feature

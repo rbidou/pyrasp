@@ -1,11 +1,8 @@
-VERSION = '0.8.2'
+VERSION = '0.8.3'
 
 from pprint import pprint
 import time
 import re
-import sqlparse
-import sqlite3
-import pickle
 import base64
 import shutil
 import json
@@ -20,6 +17,7 @@ import psutil
 import os
 import jwt
 from functools import wraps
+import cloudpickle
 
 # Flask
 try:
@@ -69,8 +67,8 @@ try:
     from pyrasp.pyrasp_data import CLOUD_FUNCTIONS
     from pyrasp.pyrasp_data import DEFAULT_CONFIG, DEFAULT_SECURITY_CHECKS
     from pyrasp.pyrasp_data import ATTACKS, ATTACKS_CHECKS, ATTACKS_CODES, BRUTE_FORCE_ATTACKS
-    from pyrasp.pyrasp_data import SQL_INJECTIONS_POINTS, SQL_INJECTIONS_VECTORS, SQL_INJECTIONS_FP, SQL_QUOTES
-    from pyrasp.pyrasp_data import XSS_VECTORS, XSS_NON_ALPHA_PATTERN, NON_ALPHA_PATTERN
+    from pyrasp.pyrasp_data import SQL_INJECTIONS_VECTORS
+    from pyrasp.pyrasp_data import XSS_VECTORS
     from pyrasp.pyrasp_data import COMMAND_INJECTIONS_VECTORS
     from pyrasp.pyrasp_data import DLP_PATTERNS
     from pyrasp.pyrasp_data import PATTERN_CHECK_FUNCTIONS
@@ -81,8 +79,8 @@ except:
     from pyrasp_data import CLOUD_FUNCTIONS
     from pyrasp_data import DEFAULT_CONFIG, DEFAULT_SECURITY_CHECKS
     from pyrasp_data import ATTACKS, ATTACKS_CHECKS, ATTACKS_CODES, BRUTE_FORCE_ATTACKS
-    from pyrasp_data import SQL_INJECTIONS_POINTS, SQL_INJECTIONS_VECTORS, SQL_INJECTIONS_FP, SQL_QUOTES
-    from pyrasp_data import XSS_VECTORS, XSS_NON_ALPHA_PATTERN, NON_ALPHA_PATTERN
+    from pyrasp_data import SQL_INJECTIONS_VECTORS
+    from pyrasp_data import XSS_VECTORS
     from pyrasp_data import COMMAND_INJECTIONS_VECTORS
     from pyrasp_data import DLP_PATTERNS
     from pyrasp_data import PATTERN_CHECK_FUNCTIONS
@@ -416,7 +414,7 @@ class PyRASP():
         if not app is None:
             self.register_security_checks(app)
 
-        xss_model_loaded = False
+        self.XSS_MODEL_LOADED = False
         ## XSS & SQLI models loaded only if enabled in configuration
         if self.SECURITY_CHECKS.get('xss'):
             # Load XSS ML model
@@ -427,28 +425,28 @@ class PyRASP():
 
             ## From source
             try:
-                self.xss_model = pickle.load(open('data/'+xss_model_file,'rb'))
-            except:
+                self.xss_model = cloudpickle.load(open('data/'+xss_model_file,'rb'))
+            except Exception as e:
                 pass
             else:
-                xss_model_loaded = True
+                self.XSS_MODEL_LOADED = True
 
             ## From package
-            if not xss_model_loaded:
+            if not self.XSS_MODEL_LOADED:
                 try:
                     xss_model_file = pkg_resources.resource_filename('pyrasp', 'data/'+xss_model_file)
-                    self.xss_model = pickle.load(open(xss_model_file,'rb'))
+                    self.xss_model = cloudpickle.load(open(xss_model_file,'rb'))
                 except:
                     pass
                 else:
-                    xss_model_loaded = True
+                    self.XSS_MODEL_LOADED = True
 
-            if not xss_model_loaded:
+            if not self.XSS_MODEL_LOADED:
                 self.print_screen('[!] XSS model not loaded', init=False, new_line_up = False)
             else:
                 self.print_screen('[+] XSS model loaded', init=True, new_line_up = False)
 
-        sqli_model_loaded = False
+        self.SQLI_MODEL_LOADED = False
         if self.SECURITY_CHECKS.get('sqli'):
             # Load SQLI ML model
             if not dev:
@@ -458,31 +456,31 @@ class PyRASP():
 
             ## From source
             try:
-                self.sqli_model = pickle.load(open('data/'+sqli_model_file,'rb'))
+                self.sqli_model = cloudpickle.load(open('data/'+sqli_model_file,'rb'))
             except:
                 pass
             else:
-                sqli_model_loaded = True
+                self.SQLI_MODEL_LOADED = True
 
             ## From package
-            if not sqli_model_loaded:
+            if not self.SQLI_MODEL_LOADED:
                 try:
                     sqli_model_file = pkg_resources.resource_filename('pyrasp', 'data/'+sqli_model_file)
-                    self.sqli_model = pickle.load(open(sqli_model_file,'rb'))
+                    self.sqli_model = cloudpickle.load(open(sqli_model_file,'rb'))
                 except Exception as e:
                     pass
                 else:
-                    sqli_model_loaded = True
+                    self.SQLI_MODEL_LOADED = True
 
-            if not sqli_model_loaded:
+            if not self.SQLI_MODEL_LOADED:
                 self.print_screen('[!] SQLI model not loaded', init=False, new_line_up = False)
             else:
                 self.print_screen('[+] SQLI model loaded', init=True, new_line_up = False)
 
         # Agent status
         self.API_STATUS['version'] = VERSION
-        self.API_STATUS['xss_loaded'] = xss_model_loaded
-        self.API_STATUS['sqli_loaded'] = sqli_model_loaded
+        self.API_STATUS['xss_loaded'] = self.XSS_MODEL_LOADED
+        self.API_STATUS['sqli_loaded'] = self.SQLI_MODEL_LOADED
 
         # AWS, GCP & Azure
         if self.PLATFORM in CLOUD_FUNCTIONS:
@@ -949,12 +947,12 @@ class PyRASP():
 
                 # Check XSS
                 if attack == None:
-                    if self.SECURITY_CHECKS.get('xss'):
+                    if self.SECURITY_CHECKS.get('xss') and self.XSS_MODEL_LOADED:
                         attack = self.check_xss(inject_vectors)
 
                 # Check SQL injections
                 if attack == None:
-                    if self.SECURITY_CHECKS.get('sqli'):
+                    if self.SECURITY_CHECKS.get('sqli') and self.SQLI_MODEL_LOADED:
                         attack = self.check_sqli(inject_vectors)
 
         return attack
@@ -1204,7 +1202,6 @@ class PyRASP():
 
         sql_injection = False
         attack = None
-        temp_db = sqlite3.connect(":memory:")
         sqli_probability = None
 
         # Get relevant vectors
@@ -1214,124 +1211,26 @@ class PyRASP():
             
             for injection in vectors[vector_type]:
 
-                # Identify single word
-                if not re.search('[ +\'"(]', injection):
-                    continue
-
-                # Identify quoted data
-                first_char = injection[0]
-                last_char = injection[-1]
-                if first_char in [ '"', "'" ]: 
-                    if last_char == first_char:
-                        quote_char = first_char
-                        if not quote_char in injection[1:-1]:
-                            continue
-
-
-                # Identify only alphanum, space
-                if re.search('^[a-zA-Z0-9 ]+$', injection) and not re.search('\snull\s', injection):
-                    continue
-
-                # Identify known FP
-                fp = False
-                for fp_pattern in SQL_INJECTIONS_FP:
-                    if re.search(fp_pattern, injection):
-                        fp = True
-                        break
-                if fp:
-                    continue
-
-                # Select proper injected request format
-                sql_quotes = ['']
-                injections_point = SQL_INJECTIONS_POINTS
-                              
-                '''
-                for c in injection:
-                    if c == '"':
-                        quotes = '"'
-                        break
-                    if c == "'":
-                        quotes = "'"
-                        break
-                '''
-
-                for c in injection:
-                    if c in SQL_QUOTES and not c in sql_quotes:
-                        sql_quotes.append(c)
-                
-                # Test valid SQL for injection point
-                for injection_point in injections_point:
-
-                    for quotes in sql_quotes:
-
-                        # Add input at injection point with quotes if necessary
-                        sql = injection_point.replace('{{vector}}', quotes+injection+quotes)
-
-                        # Add spaces
-                        sql = re.sub('\(', ' ( ', sql)
-                        sql = re.sub('\)', ' ) ', sql)
-                        sql = re.sub('"', ' " ', sql)
-                        sql = re.sub("'", " ' ", sql)
-
-                        # Remove comments
-                        sql = re.sub('/\*[^*]?\*/', '', sql)
-                        sql = re.sub('/\*.*', '', sql)
-                        sql = re.sub('--.*', '', sql)
-                        sql = re.sub('#.*', '', sql)
-
-                        # Parses request to split stacked requests
-                        parsed = sqlparse.split(sql)
-                        
-                        for statement in parsed:
-
-                            if len(statement):
-
-                                try:
-                                    temp_db.execute(statement)
-                                except Exception as e:
-                                    if 'no such table' in str(e):
-                                        sql_injection = True
-                                        
-
-                            if sql_injection:
-                                break
-                                
-                        if sql_injection:
-                            
-                            break
-
-                    if sql_injection:
-
-                        break
-
-                if len(str(injection)) < self.MIN_SQLI_LEN:
-                    continue
-
                 # Machine Learning check
-                if not sql_injection:
-                    sqli_probability = self.sqli_model.predict_proba([injection.lower()])[0]
-                    if sqli_probability[1] > self.SQLI_PROBA:
-                        sql_injection = True
-                        break
+                sqli_probability = self.sqli_model.predict_proba([injection.lower()])[0]
+                if sqli_probability[1] > self.SQLI_PROBA:
+                    sql_injection = True
+                    attack = {
+                        'type': ATTACK_SQLI,
+                        'details': {
+                            'location': vector_type,
+                            'payload': injection,
+                            'engine': 'machine learning',
+                            'score': sqli_probability[1]
+                        }
+                    }
+                    break
 
                 if sql_injection:
                     break
 
             if sql_injection:
                 break
-
-        if sql_injection:
-            attack = {
-                'type': ATTACK_SQLI,
-                'details': {
-                    'location': vector_type,
-                    'payload': injection,
-                    'engine': 'grammatical analysis'
-                }
-            }
-            if not sqli_probability is None:
-                attack['details']['engine'] = 'machine learning'
-                attack['details']['score'] = sqli_probability[1]
 
         return attack
 
@@ -1341,7 +1240,7 @@ class PyRASP():
         xss = False
         attack = None
         xss_probability = None
-        injectyion = None
+        injection = None
 
         # Get relevant vectors
         for vector_type in XSS_VECTORS:
@@ -1351,33 +1250,22 @@ class PyRASP():
 
                 str_injection = str(injection)
 
-                # Requires minimum_length
-                if len(str_injection) > self.MIN_XSS_LEN:
-
-                    if re.match(NON_ALPHA_PATTERN, str_injection) or len(re.findall(XSS_NON_ALPHA_PATTERN, str_injection)) > 8:
-                        xss = True
-                        break
-
-                    xss_probability = self.xss_model.predict_proba([str_injection.lower()])[0]
-                    if xss_probability[1] > self.XSS_PROBA:
-                        xss = True
-                        break
+                xss_probability = self.xss_model.predict_proba([str_injection.lower()])[0]
+                if xss_probability[1] > self.XSS_PROBA:
+                    xss = True
+                    attack = {
+                        'type': ATTACK_XSS,
+                        'details': {
+                            'location': vector_type,
+                            'payload': injection,
+                            'engine': 'machine learning',
+                            'score': xss_probability[1]
+                        }
+                    }
+                    break
 
             if xss:
                 break
-
-        if xss:
-            attack = {
-                'type': ATTACK_XSS,
-                'details': {
-                    'location': vector_type,
-                    'payload': injection,
-                    'engine': 'format checking'
-                }
-            }
-            if not xss_probability is None:
-                attack['details']['engine'] = 'machine learning'
-                attack['details']['score'] = xss_probability[1]
 
         return attack
 
@@ -1436,7 +1324,7 @@ class PyRASP():
             # Get request values
             for injection in vectors[vector_type]:
 
-                command_pattern = '(?:[&;|]|\$IFS)+\s*(\w+)'
+                command_pattern = r'(?:[&;|]|\$IFS)+\s*(\w+)'
                 commands = re.findall(command_pattern, str(injection)) or []
 
                 for command in commands:
@@ -2082,9 +1970,11 @@ class FlaskRASP(PyRASP):
 
             # Send attack status in status code for handling by @after_request
             if not attack == None:
-                attack_id = '::'.join([host, request_method, request_path, source_ip])
-                self.CURRENT_ATTACKS[attack_id] = attack                
-                return FlaskResponse()
+                security_check = ATTACKS_CHECKS[attack['type']]
+                if not self.SECURITY_CHECKS.get(security_check) == 3:
+                    attack_id = '::'.join([host, request_method, request_path, source_ip])
+                    self.CURRENT_ATTACKS[attack_id] = attack                
+                    return FlaskResponse()
         
     # Outgoing responses
     def set_after_security_checks(self, app):
@@ -3192,7 +3082,12 @@ class AzureRASP(PyRASP):
             if inbound_attack:
                 security_check = ATTACKS_CHECKS[inbound_attack['type']]
 
-            if not inbound_attack or self.SECURITY_CHECKS.get(security_check) == 3:
+            
+
+            if any([
+                inbound_attack is None,
+                not security_check is None and self.SECURITY_CHECKS.get(security_check) == 3
+            ]):
                 response = f(req)
 
             response_content = response.get_body().decode() or ''

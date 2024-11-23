@@ -3,8 +3,8 @@
 #
 
 DATA_VERSION = '1.1.0'
-XSS_MODEL_VERSION = '2.0.0'
-SQLI_MODEL_VERSION = '2.0.0'
+XSS_MODEL_VERSION = '3.0.0'
+SQLI_MODEL_VERSION = '3.0.0'
 
 #
 # PLATFORMS
@@ -91,23 +91,8 @@ ATTACKS_CODES = {
     ATTACK_ZTAA: [ 'PCB013' ]
 }
    
-SQL_INJECTIONS_SIGNATURES = [ '@@VERSION', '@@DATABASE', 'master\.\.xp_cmdshell', 'updatexml\(']
-SQL_INJECTIONS_FP = ['^[a-zA-Z][\\w]+\\s*&\\s*[a-zA-Z][\\w]+$','^\\d{4}-\\d{2}-\\d{2}\\s\\d{2}:\\d{2}:\\d{2}$']
-
-SQL_INJECTIONS_POINTS = [
-    'select * from test where id={{vector}}',
-    'select * from test limit {{vector}}' 
-    'select * from test limit 1 offset {{vector}}', 
-    'select * from test order by {{vector}}',
-    'select * from test group by {{vector}}',
-    'update test set var={{vector}}',
-    'update test set var=value where column_name={{vector}}',
-    'insert into test values(null,{{vector}})',
-]
 
 SQL_INJECTIONS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_values', 'user_agent', 'referer' ]
-
-SQL_QUOTES = [ '"', "'", '' ]
 
 XSS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_values', 'headers_values', 'referer' ]
 COMMAND_INJECTIONS_VECTORS = [ 'qs_values', 'post_values', 'json_values' ]
@@ -132,10 +117,7 @@ DLP_PATTERNS = {
 
 }
 
-XSS_NON_ALPHA_PATTERN = '\[[^A-Za-z0-9\]]*\]'
-NON_ALPHA_PATTERN = '^[^A-Za-z0-9]+$'
-
-B64_PATTERN = '(?:[A-Za-z0-9+/]{4})+(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?'
+B64_PATTERN = r'^(?:[A-Za-z0-9+/]{4})+(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$'
 
 #
 # DEFAULT CONFIGURATION
@@ -170,11 +152,11 @@ DEFAULT_CONFIG = {
     "SECURITY_CHECKS" : DEFAULT_SECURITY_CHECKS,    
 
     "WHITELIST": [],
-    "IGNORE_PATHS" : ["^/favicon.ico$","^/robots.txt$","^/sitemap\.(txt|xml)$"],
+    "IGNORE_PATHS" : [ r"^/favicon.ico$",r"^/robots.txt$",r"^/sitemap\.(txt|xml)$"],
 
     "FORBIDDEN_HEADERS": [ ],
 
-    "BRUTE_AND_FLOOD_PATHS" : ["^/"],
+    "BRUTE_AND_FLOOD_PATHS" : [r"^/"],
     "FLOOD_DELAY" : 60,
     "FLOOD_RATIO" : 50,
     "ERROR_FLOOD_DELAY" : 10,
@@ -201,13 +183,8 @@ DEFAULT_CONFIG = {
 
     "EXCEPTIONS" : [],
 
-    "XSS_PROBA" : 0.70,
-    "XSS_LOG_PROBA": 0.5,
-    "MIN_XSS_LEN": 16,
-
-    "SQLI_PROBA" : 0.85,
-    "SQLI_LOG_PROBA": 0.6,
-    "MIN_SQLI_LEN": 8,
+    "XSS_PROBA" : 0.6,
+    "SQLI_PROBA" : 0.6,
 
     "DLP_PHONE_NUMBERS": False,
     "DLP_CC_NUMBERS": False,
