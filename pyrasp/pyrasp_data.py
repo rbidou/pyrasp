@@ -3,8 +3,8 @@
 #
 
 DATA_VERSION = '1.1.0'
-XSS_MODEL_VERSION = '3.0.0'
-SQLI_MODEL_VERSION = '3.0.0'
+XSS_MODEL_VERSION = '3.1.0'
+SQLI_MODEL_VERSION = '3.1.0'
 
 #
 # PLATFORMS
@@ -16,7 +16,7 @@ CLOUD_FUNCTIONS = ['AWS Lambda', 'Google Cloud Function', 'Azure Function' ]
 # UTILS
 #
 
-PATTERN_CHECK_FUNCTIONS = [ 'regex', 'starts', 'contains', 'match' ]
+PATTERN_CHECK_FUNCTIONS = [ 'regex', 'starts', 'contains', 'match', 'ends' ]
 
 #
 # DETECTION
@@ -92,9 +92,8 @@ ATTACKS_CODES = {
 }
    
 
-SQL_INJECTIONS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_values', 'user_agent', 'referer' ]
-
-XSS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_values', 'headers_values', 'referer' ]
+SQL_INJECTIONS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_values', 'headers_values' ]
+XSS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_values', 'headers_values' ]
 COMMAND_INJECTIONS_VECTORS = [ 'qs_values', 'post_values', 'json_values' ]
 
 DLP_PATTERNS = {
@@ -155,6 +154,7 @@ DEFAULT_CONFIG = {
     "IGNORE_PATHS" : [ r"^/favicon.ico$",r"^/robots.txt$",r"^/sitemap\.(txt|xml)$"],
 
     "FORBIDDEN_HEADERS": [ ],
+    "WHITELIST_HEADERS": [ ],
 
     "BRUTE_AND_FLOOD_PATHS" : [r"^/"],
     "FLOOD_DELAY" : 60,
@@ -183,8 +183,8 @@ DEFAULT_CONFIG = {
 
     "EXCEPTIONS" : [],
 
-    "XSS_PROBA" : 0.6,
-    "SQLI_PROBA" : 0.6,
+    "XSS_PROBA" : 0.9,
+    "SQLI_PROBA" : 0.9,
 
     "DLP_PHONE_NUMBERS": False,
     "DLP_CC_NUMBERS": False,

@@ -1,3 +1,19 @@
+# 0.8.4
+
+## New features
+- HTTP Headers whitelist
+
+## Improvements
+- Improved XSS and SQL injections machine learning engines
+- Upgraded to scikit-learn 1.6.0
+
+## Limitations
+- Version 0.8.4 is not available on AWS Lambda Functions
+- Some SQL Injection attacks may be blocked as XSS attacks
+
+## Bug fix
+- 'ends' pattern check was not applied
+
 # 0.8.3
 
 ## New features

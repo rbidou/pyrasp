@@ -1,4 +1,4 @@
-VERSION = '0.8.3'
+VERSION = '0.8.4'
 
 from pprint import pprint
 import time
@@ -331,7 +331,6 @@ class PyRASP():
         # Set init verbosity
         if not verbose_level == None:
             self.INIT_VERBOSE = verbose_level
-
 
         # Development mode
         if dev:
@@ -1559,29 +1558,32 @@ class PyRASP():
         headers = self.get_request_headers(request)
         for header in headers:
 
-            # Cookies
-            if header.lower() == 'cookie':
-                cookies = headers[header].split(';')
-                for cookie in cookies:
-                    cookie_parts = cookie.split('=')
-                    if len(cookie_parts) == 1:
-                        cookie_value = cookie_parts[0].strip()
-                    else:
-                        cookie_value = '='.join(cookie_parts[1:]).strip()
-                    vectors['cookies'].extend(self.decode_value(cookie_value))
-                
-            # User Agent
-            elif header.lower() == 'user-agent':
-                vectors['user_agent'] = [ headers[header] ]
+            # Check if header not in whitelist
+            if not any([ self.check_pattern(header.lower(), i[0].lower(), i[1]) for i in self.WHITELIST_HEADERS]):
 
-            # Refererer
-            elif header.lower() == 'referer':
-                vectors['referer'] = [ headers[header] ]
-            
-            # Other headers
-            else:
-                vectors['headers_names'].append(header)
-                vectors['headers_values'].append(headers[header])
+                # Cookies
+                if header.lower() == 'cookie':
+                    cookies = headers[header].split(';')
+                    for cookie in cookies:
+                        cookie_parts = cookie.split('=')
+                        if len(cookie_parts) == 1:
+                            cookie_value = cookie_parts[0].strip()
+                        else:
+                            cookie_value = '='.join(cookie_parts[1:]).strip()
+                        vectors['cookies'].extend(self.decode_value(cookie_value))
+                    
+                # User Agent
+                elif header.lower() == 'user-agent':
+                    vectors['user_agent'] = [ headers[header] ]
+
+                # Refererer
+                elif header.lower() == 'referer':
+                    vectors['referer'] = [ headers[header] ]
+                
+                # Other headers
+                else:
+                    vectors['headers_names'].append(header)
+                    vectors['headers_values'].append(headers[header])
 
         for vector_type in vectors:
 
