@@ -92,9 +92,9 @@ ATTACKS_CODES = {
 }
    
 
-SQL_INJECTIONS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_values', 'headers_values' ]
-XSS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_values', 'headers_values' ]
-COMMAND_INJECTIONS_VECTORS = [ 'qs_values', 'post_values', 'json_values' ]
+SQL_INJECTIONS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_values', 'headers_values', 'mcp_values' ]
+XSS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_values', 'headers_values', 'mcp_values' ]
+COMMAND_INJECTIONS_VECTORS = [ 'qs_values', 'post_values', 'json_values', 'mcp_values' ]
 
 DLP_PATTERNS = {
     'phone': [ r'(011|00|\+)((?:9[679]|8[035789]|6[789]|5[90]|42|3[578]|2[1-689])|9[0-58]|8[1246]|6[0-6]|5[1-8]|4[013-9]|3[0-469]|2[70]|7|1)(?:\W*\d){0,13}\d' ],
