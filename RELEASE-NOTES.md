@@ -1,7 +1,7 @@
 # 0.9.0
 
 ## New features
-- MCP Host and MCP Tool security
+- MCP Tools security
 
 ## Bug fix
 - Exceptions were not applied on FastAPI
