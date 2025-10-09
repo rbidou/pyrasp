@@ -18,7 +18,7 @@ import os
 import jwt
 from functools import wraps
 import cloudpickle
-
+from loguru import logger
 # Flask
 try:
     from flask import request, redirect, url_for
@@ -207,7 +207,7 @@ def log_worker(input, server, port, format = 'syslog', protocol = 'udp', path = 
     except:
         pass
 
-def log_thread(rasp_instance, input, server, port, format = 'syslog', protocol = 'udp', path = '', debug = False):
+def log_thread(rasp_instance, input, server, port, format = 'syslog', protocol = 'udp', path = '',local_log_path = "", debug = False):
 
     webhook = False
     syslog_udp = False
@@ -231,7 +231,8 @@ def log_thread(rasp_instance, input, server, port, format = 'syslog', protocol =
     for log_data in iter(input.get, '--STOP--'):
 
         try:
-
+            if local_log_path:
+                logger.info(log_data)
             if webhook:
                 requests.post(server_url, json=log_data, timeout=1) 
             elif syslog_udp:
@@ -677,7 +678,8 @@ class PyRASP():
     ####################################################
 
     def start_logging(self, restart = False):
-
+        if self.LOCAL_LOG_PATH:
+            logger.add(self.LOCAL_LOG_PATH,rotation="200MB")
         if restart:
             self.LOG_QUEUE.put('--STOP--')
             while self.LOG_THREAD.is_alive():
@@ -685,7 +687,7 @@ class PyRASP():
 
         self.print_screen('[+] Starting logging process', init=True, new_line_up = False)
         self.LOG_QUEUE = Queue()
-        self.LOG_THREAD = Thread(target=log_thread, args=(self, self.LOG_QUEUE, self.LOG_SERVER, self.LOG_PORT, self.LOG_FORMAT, self.LOG_PROTOCOL, self.LOG_PATH ))
+        self.LOG_THREAD = Thread(target=log_thread, args=(self, self.LOG_QUEUE, self.LOG_SERVER, self.LOG_PORT, self.LOG_FORMAT, self.LOG_PROTOCOL, self.LOG_PATH,self.LOCAL_LOG_PATH ))
         self.LOG_THREAD.start()
         
     def log_security_event(self, event_type, source_ip, user = None, details = {}):
@@ -2210,7 +2212,7 @@ class FastApiRASP(PyRASP):
 
             # Get vectors - need to do it here as async
             vectors = await self.get_vectors(request) 
-            vectors = await self.remove_exceptions(vectors) 
+            vectors = self.remove_exceptions(vectors)
 
             # Check inboud attacks
             inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request, vectors)

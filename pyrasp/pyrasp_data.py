@@ -199,6 +199,7 @@ DEFAULT_CONFIG = {
     "LOG_SERVER" : "127.0.0.1",    
     "LOG_PORT": 514,
     "LOG_PROTOCOL": "UDP",
+    "LOCAL_LOG_PATH":"",
     "LOG_PATH": "",
     "RESOLVE_COUNTRY": True,
 
