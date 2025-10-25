@@ -5,6 +5,7 @@
 DATA_VERSION = '1.1.0'
 XSS_MODEL_VERSION = '3.1.0'
 SQLI_MODEL_VERSION = '3.1.0'
+PROMPT_MODEL_VERSION = '1.0.0'
 
 #
 # PLATFORMS
@@ -36,7 +37,8 @@ ATTACKS = [
     'Forbidden Header',     # 10
     'Data Leak Prevention', # 11
     'Brute Force',          # 12
-    'Zero-Trust'            # 13
+    'Zero-Trust',           # 13
+    'Prompt Injection'      # 14
 ]
 
 BRUTE_FORCE_ATTACKS = [ 1, 3, 5, 10 ]
@@ -56,6 +58,7 @@ ATTACK_HEADER = 10
 ATTACK_DLP = 11
 ATTACK_BRUTE = 12
 ATTACK_ZTAA = 13
+ATTACK_PROMPT = 14
 
 ATTACKS_CHECKS = [
     'blacklist',
@@ -71,7 +74,8 @@ ATTACKS_CHECKS = [
     'headers',
     'dlp',
     'brute',
-    'ztaa'
+    'ztaa',
+    'prompt'
 ]
 
 ATTACKS_CODES = {
@@ -88,13 +92,15 @@ ATTACKS_CODES = {
     ATTACK_HEADER: ['PCB010'],
     ATTACK_DLP: ['T1052', 'PCB011'],
     ATTACK_BRUTE : ['T1110', 'PCB012'],
-    ATTACK_ZTAA: [ 'PCB013' ]
+    ATTACK_ZTAA: [ 'PCB013' ],
+    ATTACK_PROMPT: ['AML.T0051.000', 'PCB014' ]
 }
    
 
 SQL_INJECTIONS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_values', 'headers_values', 'mcp_values' ]
 XSS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_values', 'headers_values', 'mcp_values' ]
 COMMAND_INJECTIONS_VECTORS = [ 'qs_values', 'post_values', 'json_values', 'mcp_values' ]
+PROMPT_INJECTIONS_VECTORS = [ 'qs_values', 'post_values', 'json_values', 'mcp_values' ]
 
 DLP_PATTERNS = {
     'phone': [ r'(011|00|\+)((?:9[679]|8[035789]|6[789]|5[90]|42|3[578]|2[1-689])|9[0-58]|8[1246]|6[0-6]|5[1-8]|4[013-9]|3[0-469]|2[70]|7|1)(?:\W*\d){0,13}\d' ],
@@ -136,7 +142,8 @@ DEFAULT_SECURITY_CHECKS = {
     "method": 0,
     "dlp": 0,
     "brute": 2,
-    "ztaa": 0
+    "ztaa": 0,
+    "prompt": 0
 }
 
 DEFAULT_CONFIG = {
@@ -200,6 +207,7 @@ DEFAULT_CONFIG = {
     "LOG_PORT": 514,
     "LOG_PROTOCOL": "UDP",
     "LOG_PATH": "",
+    "LOG_FILE_SIZE": 50,
     "RESOLVE_COUNTRY": True,
 
     "CHANGE_SERVER": True,
@@ -215,3 +223,17 @@ DEFAULT_CONFIG = {
     "ZTAA_BROWSER_VERSION": False
 }
 
+#
+# LLM 
+#
+
+PROMPT_GPT_CONFIG = {
+    'vocab_size': 50257,
+    'qkv_bias': True,
+    'context_length': 256,
+    'emb_dim': 64,
+    'n_layers': 8,
+    'n_heads': 8,
+    'drop_rate': 0.0,
+    'pad_id': 50256
+}

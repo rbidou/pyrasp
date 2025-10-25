@@ -1,4 +1,4 @@
-VERSION = '0.9.0'
+VERSION = '0.9.1'
 
 from pprint import pprint
 import time
@@ -10,14 +10,17 @@ import requests
 import socket
 from datetime import datetime
 import signal
-import pkg_resources
 import sys
 from functools import partial
 import psutil
 import os
 import jwt
 from functools import wraps
+from loguru import logger
 import cloudpickle
+import importlib_resources
+import torch
+import tiktoken
 
 # Flask
 try:
@@ -57,6 +60,13 @@ try:
 except:
     pass
 
+# GPT Model
+try:
+    from pyrasp.pyrasp_gpt import GPTModel
+except:
+    from pyrasp_gpt import GPTModel
+
+
 # MULTIPROCESSING - NOT FOR AWS & GCP ENVIRONMENTS
 if all([ 
     os.environ.get("AWS_EXECUTION_ENV") is None,
@@ -67,29 +77,23 @@ if all([
 
 # DATA GLOBALS
 try:
-    from pyrasp.pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION
+    from pyrasp.pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION, PROMPT_MODEL_VERSION
     from pyrasp.pyrasp_data import CLOUD_FUNCTIONS
     from pyrasp.pyrasp_data import DEFAULT_CONFIG, DEFAULT_SECURITY_CHECKS
     from pyrasp.pyrasp_data import ATTACKS, ATTACKS_CHECKS, ATTACKS_CODES, BRUTE_FORCE_ATTACKS
-    from pyrasp.pyrasp_data import SQL_INJECTIONS_VECTORS
-    from pyrasp.pyrasp_data import XSS_VECTORS
-    from pyrasp.pyrasp_data import COMMAND_INJECTIONS_VECTORS
-    from pyrasp.pyrasp_data import DLP_PATTERNS
-    from pyrasp.pyrasp_data import PATTERN_CHECK_FUNCTIONS
-    from pyrasp.pyrasp_data import B64_PATTERN
-    from pyrasp.pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE, ATTACK_ZTAA
+    from pyrasp.pyrasp_data import SQL_INJECTIONS_VECTORS, XSS_VECTORS, COMMAND_INJECTIONS_VECTORS, PROMPT_INJECTIONS_VECTORS
+    from pyrasp.pyrasp_data import DLP_PATTERNS, PATTERN_CHECK_FUNCTIONS, B64_PATTERN
+    from pyrasp.pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE, ATTACK_ZTAA, ATTACK_PROMPT
+    from pyrasp.pyrasp_data import PROMPT_GPT_CONFIG
 except:
-    from pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION
+    from pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION, PROMPT_MODEL_VERSION
     from pyrasp_data import CLOUD_FUNCTIONS
     from pyrasp_data import DEFAULT_CONFIG, DEFAULT_SECURITY_CHECKS
     from pyrasp_data import ATTACKS, ATTACKS_CHECKS, ATTACKS_CODES, BRUTE_FORCE_ATTACKS
-    from pyrasp_data import SQL_INJECTIONS_VECTORS
-    from pyrasp_data import XSS_VECTORS
-    from pyrasp_data import COMMAND_INJECTIONS_VECTORS
-    from pyrasp_data import DLP_PATTERNS
-    from pyrasp_data import PATTERN_CHECK_FUNCTIONS
-    from pyrasp_data import B64_PATTERN
-    from pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE, ATTACK_ZTAA
+    from pyrasp_data import SQL_INJECTIONS_VECTORS, XSS_VECTORS, COMMAND_INJECTIONS_VECTORS, PROMPT_INJECTIONS_VECTORS
+    from pyrasp_data import DLP_PATTERNS, PATTERN_CHECK_FUNCTIONS, B64_PATTERN
+    from pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE, ATTACK_ZTAA, ATTACK_PROMPT
+    from pyrasp_data import PROMPT_GPT_CONFIG
 
 # IP
 IP_COUNTRY = {}
@@ -166,80 +170,40 @@ def get_ip_country(source_ip):
 
     return country
 
-def log_worker(input, server, port, format = 'syslog', protocol = 'udp', path = '', debug = False):
+def log_thread(rasp_instance, input, server, port, protocol = 'udp', path = '', debug = False):
 
-    webhook = False
-    syslog_udp = False
-    syslog_tcp = False
+    transport = None
 
-    if format.lower() in ['json', 'pcb']:
-        if not path.startswith('/'):
-            path = '/'+path
-        server_url = f'{protocol.lower()}://{server}:{port}{path}'
-        webhook = True
-
-    elif format.lower() == 'syslog':
-        if protocol.lower() == 'udp':
-            syslog_udp = True
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        elif protocol.lower() == 'tcp':
-            syslog_tcp = True
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-    try:
-
-        for log_data in iter(input.get, '--STOP--'):
-
-            try:
-                if webhook:
-                    requests.post(server_url, json=log_data, timeout=3) 
-                elif syslog_udp:
-                    sock.sendto(log_data.encode(), (server, port))
-                elif syslog_tcp:
-                    sock.connect((server, port))
-                    sock.send(log_data)
-                    sock.close()
-
-            except Exception as e:
-                if debug: 
-                    print(f'Error sending logs : {str(e)}')
-
-    except:
-        pass
-
-def log_thread(rasp_instance, input, server, port, format = 'syslog', protocol = 'udp', path = '', debug = False):
-
-    webhook = False
-    syslog_udp = False
-    syslog_tcp = False
-
-    if format.lower() in ['json', 'pcb']:
+    if protocol.lower() in [ 'http', 'https' ]:
         if not path.startswith('/'):
             path = '/'+path
         server_url = f'{protocol.lower()}://{server}:{port}/logs'
-        webhook = True
-
-    elif format.lower() == 'syslog':
-        if protocol.lower() == 'udp':
-            syslog_udp = True
+        transport = 'webhook'
+    elif protocol.lower() == 'udp':
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        elif protocol.lower() == 'tcp':
-            syslog_tcp = True
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(1)
-
+            transport = 'udp'
+    elif protocol.lower() == 'tcp':
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        transport = 'tcp'
+    elif protocol.lower() == 'file':
+        transport = 'file'
+        
     for log_data in iter(input.get, '--STOP--'):
 
         try:
 
-            if webhook:
+            if transport == 'webhook':
                 requests.post(server_url, json=log_data, timeout=1) 
-            elif syslog_udp:
+            elif transport == 'tcp':
                 sock.sendto(log_data.encode(), (server, port))
-            elif syslog_tcp:
+            elif transport == 'udp':
                 sock.connect((server, port))
                 sock.send(log_data)
                 sock.close()
+            elif transport == 'file':
+                str_log_data = json.dumps(log_data) if not isinstance(log_data, str) else log_data
+                logger.warning(str_log_data)
 
         except Exception as e:
             if debug: 
@@ -437,7 +401,7 @@ class PyRASP():
             ## From package
             if not self.XSS_MODEL_LOADED:
                 try:
-                    xss_model_file = pkg_resources.resource_filename('pyrasp', 'data/'+xss_model_file)
+                    xss_model_file = importlib_resources.files('pyrasp') / 'data' / xss_model_file
                     self.xss_model = cloudpickle.load(open(xss_model_file,'rb'))
                 except:
                     pass
@@ -468,7 +432,7 @@ class PyRASP():
             ## From package
             if not self.SQLI_MODEL_LOADED:
                 try:
-                    sqli_model_file = pkg_resources.resource_filename('pyrasp', 'data/'+sqli_model_file)
+                    sqli_model_file = importlib_resources.files('pyrasp') / 'data' / sqli_model_file
                     self.sqli_model = cloudpickle.load(open(sqli_model_file,'rb'))
                 except Exception as e:
                     pass
@@ -480,10 +444,50 @@ class PyRASP():
             else:
                 self.print_screen('[+] SQLI model loaded', init=True, new_line_up = False)
 
+        self.PROMPT_MODEL_LOADED = False
+
+        ## Prompt Injection model loaded only if enabled in configuration
+        if self.SECURITY_CHECKS.get('prompt'):
+
+            # Init model
+            self.prompt_model = GPTModel(PROMPT_GPT_CONFIG)
+
+            prompt_model_file = 'prompt_model-'+PROMPT_MODEL_VERSION
+
+            prompt_model_filenames = [
+                'data/' + prompt_model_file,
+                importlib_resources.files('pyrasp') / 'data' / prompt_model_file
+            ]
+
+            for prompt_model_filename in prompt_model_filenames:
+                try:
+                    self.prompt_model.load_state_dict(torch.load(prompt_model_filename, map_location=torch.device('cpu'), weights_only=True))
+                except Exception as e:
+                    pass
+                else:
+                    self.PROMPT_MODEL_LOADED = True
+                    break
+
+            if self.PROMPT_MODEL_LOADED:
+
+                # Set model in eval mode
+                self.prompt_model.eval()
+
+                # Setup Tokenizer
+                self.gpt2_tokenizer = tiktoken.get_encoding('gpt2')
+
+
+            if not self.PROMPT_MODEL_LOADED:
+                self.print_screen('[!] Prompt Injection model not loaded', init=False, new_line_up = False)
+            else:
+                self.print_screen('[+] Prompt Injection model loaded', init=True, new_line_up = False)
+
+
         # Agent status
         self.API_STATUS['version'] = VERSION
         self.API_STATUS['xss_loaded'] = self.XSS_MODEL_LOADED
         self.API_STATUS['sqli_loaded'] = self.SQLI_MODEL_LOADED
+        self.API_STATUS['prompt_loaded'] = self.PROMPT_MODEL_LOADED
 
         # AWS, GCP & Azure
         if self.PLATFORM in CLOUD_FUNCTIONS:
@@ -678,6 +682,11 @@ class PyRASP():
 
     def start_logging(self, restart = False):
 
+        if self.LOG_PROTOCOL.lower() == 'file':
+            from loguru import logger
+            logger.remove()
+            logger.add(self.LOG_PATH, level='INFO', rotation=f'{self.LOG_FILE_SIZE}MB', format='{message}')
+            
         if restart:
             self.LOG_QUEUE.put('--STOP--')
             while self.LOG_THREAD.is_alive():
@@ -685,7 +694,7 @@ class PyRASP():
 
         self.print_screen('[+] Starting logging process', init=True, new_line_up = False)
         self.LOG_QUEUE = Queue()
-        self.LOG_THREAD = Thread(target=log_thread, args=(self, self.LOG_QUEUE, self.LOG_SERVER, self.LOG_PORT, self.LOG_FORMAT, self.LOG_PROTOCOL, self.LOG_PATH ))
+        self.LOG_THREAD = Thread(target=log_thread, args=(self, self.LOG_QUEUE, self.LOG_SERVER, self.LOG_PORT, self.LOG_PROTOCOL, self.LOG_PATH ))
         self.LOG_THREAD.start()
         
     def log_security_event(self, event_type, source_ip, user = None, details = {}):
@@ -790,18 +799,21 @@ class PyRASP():
 
         # Load parameters
         config_params = config.get('config') or config
-        self.API_CONFIG = config_params
+        agent_config = DEFAULT_CONFIG.copy()
+        agent_config.update(config_params)
 
-        for key in config_params:
-            setattr(self, key, config_params[key])
+        self.API_CONFIG = agent_config
+
+        for key in agent_config:
+            setattr(self, key, agent_config[key])
 
         # Setting default security checks
         for security_check in DEFAULT_SECURITY_CHECKS:
-            if config_params['SECURITY_CHECKS'].get(security_check) == None:
-                config_params['SECURITY_CHECKS'][security_check] = DEFAULT_SECURITY_CHECKS[security_check]
+            if agent_config['SECURITY_CHECKS'].get(security_check) == None:
+                agent_config['SECURITY_CHECKS'][security_check] = DEFAULT_SECURITY_CHECKS[security_check]
         
-        for key in config_params:
-            self.print_screen(f'[+] {key} => {config_params[key]}', 100, init=False)    
+        for key in agent_config:
+            self.print_screen(f'[+] {key} => {agent_config[key]}', 100, init=False)    
 
         # Load blacklist
         config_blacklist = config.get('blacklist')
@@ -957,6 +969,11 @@ class PyRASP():
                 if attack == None:
                     if self.SECURITY_CHECKS.get('sqli') and self.SQLI_MODEL_LOADED:
                         attack = self.check_sqli(inject_vectors)
+
+                # Check Prompt injection
+                if attack == None:
+                    if self.SECURITY_CHECKS.get('prompt') and self.PROMPT_MODEL_LOADED:
+                        attack = self.check_prompt_injection(inject_vectors)
 
         return attack
 
@@ -1440,7 +1457,57 @@ class PyRASP():
                 break
 
         return leaked
+
+    # Check Prompt Injection
+    def check_prompt_injection(self, vectors):
+
+        prompt_injection = False
+        attack = None
+        injection_probability = None
+        injection = None
+
+        # Get relevant vectors
+        for vector_type in PROMPT_INJECTIONS_VECTORS:
+
+            if not vector_type in vectors:
+                continue
+
+            # Get request values
+            for injection in vectors[vector_type]:
+
+                injection_ids = self.gpt2_tokenizer.encode(str(injection))
+                max_length = self.prompt_model.pos_emb.weight.shape[0]
         
+                injection_ids = injection_ids[:max_length]
+
+                pad_token_id = PROMPT_GPT_CONFIG['pad_id']
+                injection_ids += [pad_token_id] * (max_length - len(injection_ids))
+                injection_tensor = torch.tensor(injection_ids).unsqueeze(0)
+                
+                with torch.no_grad():
+                    logits = self.prompt_model(injection_tensor)[:, -1, :]
+                probas = torch.softmax(logits, dim = -1)
+
+                injection_probability = probas.tolist()[0]
+
+                if injection_probability[1] > 0.5:
+                        prompt_injection = True
+                        attack = {
+                            'type': ATTACK_PROMPT,
+                            'details': {
+                                'location': vector_type,
+                                'payload': injection,
+                                'engine': 'large language model',
+                                'score': injection_probability[1]
+                            }
+                        }
+                        break
+
+                if prompt_injection:
+                    break
+
+        return attack
+
     ####################################################
     # RESPONSE PROCESSING
     ####################################################
@@ -2210,7 +2277,7 @@ class FastApiRASP(PyRASP):
 
             # Get vectors - need to do it here as async
             vectors = await self.get_vectors(request) 
-            vectors = await self.remove_exceptions(vectors) 
+            vectors = self.remove_exceptions(vectors) 
 
             # Check inboud attacks
             inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request, vectors)
@@ -3516,6 +3583,11 @@ class McpToolRASP(PyRASP):
             if self.SECURITY_CHECKS.get('sqli') and self.SQLI_MODEL_LOADED:
                 attack = self.check_sqli(inject_vectors)
 
+        # Check Prompt injection
+        if attack == None:
+            if self.SECURITY_CHECKS.get('prompt') and self.PROMPT_MODEL_LOADED:
+                attack = self.check_prompt_injection(inject_vectors)
+
         return attack
     
     def check_outbound_attacks(self, response_data):
@@ -3566,6 +3638,6 @@ class McpToolRASP(PyRASP):
         }
                 
         return input_vectors
-     
-        
+
+
     

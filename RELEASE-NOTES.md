@@ -1,3 +1,17 @@
+# 0.9.1
+
+## New features
+- Prompt Injection detection module based on custom 100% home made LLM
+- Logging to local file
+
+## Improvement
+- Migrated from setuptools pkg_resources (deprecated) to importlib_resources (but who cares...)
+- Log format is now independant from log protocol
+- Simplified and cleaned some pieces of code
+
+## Bug fix
+- Fixed a FastAPI agent crash. Credits to Julien Balleyguier
+
 # 0.9.0
 
 ## New features

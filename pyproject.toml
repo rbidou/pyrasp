@@ -1,6 +1,6 @@
 [project]
 name = "pyrasp"
-version = "0.9.0"
+version = "0.9.1"
 authors = [
     { name = "Renaud Bidou", email = "renaud@paracyberbellum.io" }
 ]
@@ -8,7 +8,7 @@ description = "Python RASP"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.7"
-keywords = [ "rasp", "web application", "security", "xss", "sql injection", "waf", "dlp" ]
+keywords = [ "rasp", "web application", "security", "xss", "sql injection", "waf", "dlp", "mcp", "llm", "prompt injection", "ai", "machine learning" ]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python",
@@ -23,7 +23,12 @@ dependencies = [
   "psutil>=6.0.0",
   "pyjwt==2.8.0",
   "cloudpickle==3.1.0",
-  "setuptools>=75.5.0"
+  "setuptools>=75.5.0",
+  "loguru",
+  "fastmcp",
+  "importlib_resources",
+  "torch==2.9.*",
+  "tiktoken==0.12.0"
 ]
 
 [project.urls]
