@@ -1,3 +1,26 @@
+# 0.9.2
+
+## New features
+- Configuration Templates
+- Basic multipart file uploads validation for Flask and Django
+- New reaction mechanism and capabilities
+
+## READ THE DOC !!!
+- Improved class constructor
+- Changed configuration workflow
+- `GTFO_MSG` and `DENY_STATUS_CODE` parameters have been deprecated (see `BLACKLIST_*` and `BLOCK_*` settings)
+
+## Improvements
+- Revamped reaction capabilities
+- Simplified MCP blocked attack response format
+- Improved posted variables processing in Flask
+- Removed development mode
+- New QA engine (ok that's on our side, but you benefit from it)
+
+## Bug fix
+- Fixed FastMCP deprecations
+- Upgraded setuptools minimum version dependency to fix potential security issues
+
 # 0.9.1
 
 ## New features

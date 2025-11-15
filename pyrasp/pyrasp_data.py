@@ -38,7 +38,8 @@ ATTACKS = [
     'Data Leak Prevention', # 11
     'Brute Force',          # 12
     'Zero-Trust',           # 13
-    'Prompt Injection'      # 14
+    'Prompt Injection',     # 14
+    'Upload Validation'     # 15
 ]
 
 BRUTE_FORCE_ATTACKS = [ 1, 3, 5, 10 ]
@@ -59,6 +60,7 @@ ATTACK_DLP = 11
 ATTACK_BRUTE = 12
 ATTACK_ZTAA = 13
 ATTACK_PROMPT = 14
+ATTACK_UPLOAD = 15
 
 ATTACKS_CHECKS = [
     'blacklist',
@@ -75,7 +77,8 @@ ATTACKS_CHECKS = [
     'dlp',
     'brute',
     'ztaa',
-    'prompt'
+    'prompt',
+    'upload'
 ]
 
 ATTACKS_CODES = {
@@ -93,7 +96,8 @@ ATTACKS_CODES = {
     ATTACK_DLP: ['T1052', 'PCB011'],
     ATTACK_BRUTE : ['T1110', 'PCB012'],
     ATTACK_ZTAA: [ 'PCB013' ],
-    ATTACK_PROMPT: ['AML.T0051.000', 'PCB014' ]
+    ATTACK_PROMPT: ['AML.T0051.000', 'PCB014' ],
+    ATTACK_UPLOAD: [ 'PCB015' ]
 }
    
 
@@ -129,98 +133,245 @@ B64_PATTERN = r'^(?:[A-Za-z0-9+/]{4})+(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$
 #
 
 DEFAULT_SECURITY_CHECKS = {
-    "path": 1,
-    "headers": 0,
-    "flood": 2,
-    "spoofing": 0,
-    "decoy": 2,
-    "format": 2,
-    "sqli": 2,
-    "xss": 2,
-    "hpp": 2,
-    "command": 2,
-    "method": 0,
-    "dlp": 0,
-    "brute": 2,
-    "ztaa": 0,
-    "prompt": 0
+    'path': 1,
+    'headers': 0,
+    'flood': 2,
+    'spoofing': 0,
+    'decoy': 2,
+    'format': 2,
+    'sqli': 2,
+    'xss': 2,
+    'hpp': 2,
+    'command': 2,
+    'method': 0,
+    'dlp': 0,
+    'brute': 2,
+    'ztaa': 0,
+    'prompt': 0,
+    'upload': 0
 }
 
 DEFAULT_CONFIG = {
-    "HOSTS" : [],
-    "APP_NAME" : "Web Server",
-    "GTFO_MSG" : 'Blocked',
-    "DENY_STATUS_CODE": 403,
+    'HOSTS' : [],
+    'APP_NAME' : 'Web Server',
 
-    "VERBOSE" : 0,
-    "DECODE_B64" : True,
+    'BLACKLIST_ACTION': 'block',
+    'BLACKLIST_STATUS_CODE': 403,
+    'BLACKLIST_ACTION_CONTENT': 'Blocked',
 
-    "SECURITY_CHECKS" : DEFAULT_SECURITY_CHECKS,    
+    'BLOCK_ACTION': 'block',
+    'BLOCK_STATUS_CODE': 403,
+    'BLOCK_ACTION_CONTENT': 'Blocked',
 
-    "WHITELIST": [],
-    "IGNORE_PATHS" : [ r"^/favicon.ico$",r"^/robots.txt$",r"^/sitemap\.(txt|xml)$"],
+    'VERBOSE' : 0,
+    'DECODE_B64' : True,
 
-    "FORBIDDEN_HEADERS": [ ],
-    "WHITELIST_HEADERS": [ ],
+    'SECURITY_CHECKS' : DEFAULT_SECURITY_CHECKS,    
 
-    "BRUTE_AND_FLOOD_PATHS" : [r"^/"],
-    "FLOOD_DELAY" : 60,
-    "FLOOD_RATIO" : 50,
-    "ERROR_FLOOD_DELAY" : 10,
-    "ERROR_FLOOD_RATIO" : 100,
+    'WHITELIST': [],
+    'IGNORE_PATHS' : [ r'^/favicon.ico$',r'^/robots.txt$',r'^/sitemap\.(txt|xml)$'],
 
-    "BLACKLIST_DELAY" : 3600,
-    "BLACKLIST_OVERRIDE" : False,
-    "BLACKLIST_SHARE" : False,
+    'FORBIDDEN_HEADERS': [ ],
+    'WHITELIST_HEADERS': [ ],
 
-    "DECOY_ROUTES" : [ 
-        [ "/admin", "ends" ],
-        [ "/login", "ends" ],
-        [ "/logs", "ends" ],
-        [ "/version", "ends" ],   
-        [ "/cgi-bin/", "starts" ],                      
-        [ "/remote/", "starts" ],                     
-        [ "/.env", "starts" ],                     
-        [ "/owa/", "starts" ],                        
-        [ "/autodiscover", "starts" ],
-        [ "/Autodiscover", "starts" ],
-        [ "/.git/", "starts" ],                
-        [ "/.aws/ ", "starts" ],
+    'BRUTE_AND_FLOOD_PATHS' : [r'^/'],
+    'FLOOD_DELAY' : 60,
+    'FLOOD_RATIO' : 50,
+    'ERROR_FLOOD_DELAY' : 10,
+    'ERROR_FLOOD_RATIO' : 100,
+
+    'BLACKLIST_DELAY' : 3600,
+    'BLACKLIST_OVERRIDE' : False,
+    'BLACKLIST_SHARE' : False,
+
+    'DECOY_ROUTES' : [ 
+        [ '/admin', 'ends' ],
+        [ '/login', 'ends' ],
+        [ '/logs', 'ends' ],
+        [ '/version', 'ends' ],   
+        [ '/cgi-bin/', 'starts' ],                      
+        [ '/remote/', 'starts' ],                     
+        [ '/.env', 'starts' ],                     
+        [ '/owa/', 'starts' ],                        
+        [ '/autodiscover', 'starts' ],
+        [ '/Autodiscover', 'starts' ],
+        [ '/.git/', 'starts' ],                
+        [ '/.aws/ ', 'starts' ],
+        [ '.php', 'ends' ]
     ],
 
-    "EXCEPTIONS" : [],
+    'EXCEPTIONS' : [],
 
-    "XSS_PROBA" : 0.9,
-    "SQLI_PROBA" : 0.9,
+    'XSS_PROBA' : 0.9,
+    'SQLI_PROBA' : 0.9,
 
-    "DLP_PHONE_NUMBERS": False,
-    "DLP_CC_NUMBERS": False,
-    "DLP_PRIVATE_KEYS": False,
-    "DLP_HASHES": False,
-    "DLP_WINDOWS_CREDS": False,
-    "DLP_LINUX_CREDS": False,
-    "DLP_LOG_LEAKED_DATA": False,
+    'DLP_PHONE_NUMBERS': False,
+    'DLP_CC_NUMBERS': False,
+    'DLP_PRIVATE_KEYS': False,
+    'DLP_HASHES': False,
+    'DLP_WINDOWS_CREDS': False,
+    'DLP_LINUX_CREDS': False,
+    'DLP_LOG_LEAKED_DATA': False,
 
-    "LOG_ENABLED": False,
-    "LOG_FORMAT": "Syslog",
-    "LOG_SERVER" : "127.0.0.1",    
-    "LOG_PORT": 514,
-    "LOG_PROTOCOL": "UDP",
-    "LOG_PATH": "",
-    "LOG_FILE_SIZE": 50,
-    "RESOLVE_COUNTRY": True,
+    'UPLOAD_FILES': True,
+    'UPLOAD_MAX_SIZE': 2,
+    'UPLOAD_EXTENSIONS': [ 'jpg', 'png', 'gif', 'pdf' ],
 
-    "CHANGE_SERVER": True,
-    "SERVER_HEADER": "Apache",
+    'LOG_ENABLED': False,
+    'LOG_FORMAT': 'Syslog',
+    'LOG_SERVER' : '127.0.0.1',    
+    'LOG_PORT': 514,
+    'LOG_PROTOCOL': 'UDP',
+    'LOG_PATH': '',
+    'LOG_FILE_SIZE': 50,
+    'RESOLVE_COUNTRY': True,
 
-    "BEACON": False,
-    "TELEMETRY_DATA": False,
-    "BEACON_URL": None,
-    "BEACON_DELAY": 30,
+    'CHANGE_SERVER': True,
+    'SERVER_HEADER': 'Apache',
 
-    "ZTAA_KEY_HEADER": "pcb-ztaa",
-    "ZTAA_KEY": "",
-    "ZTAA_BROWSER_VERSION": False
+    'BEACON': False,
+    'TELEMETRY_DATA': False,
+    'BEACON_URL': None,
+    'BEACON_DELAY': 30,
+
+    'ZTAA_KEY_HEADER': 'pcb-ztaa',
+    'ZTAA_KEY': '',
+    'ZTAA_BROWSER_VERSION': False
+}
+
+#
+# TEMPLATES
+#
+
+CONFIG_TEMPLATES = {
+    'default': {},
+    'audit': {
+        'SECURITY_CHECKS': {
+            'path': 2,
+            'headers': 0,
+            'flood': 2,
+            'spoofing': 2,
+            'decoy': 2,
+            'format': 2,
+            'sqli': 2,
+            'xss': 2,
+            'hpp': 2,
+            'command': 2,
+            'method': 2,
+            'dlp': 2,
+            'brute': 2,
+            'ztaa': 0,
+            'prompt': 0,
+            'upload': 2
+        },
+        'DECOY_ROUTES' : [ 
+            [ '/admin', 'ends' ],
+            [ '/login', 'ends' ],
+            [ '/logs', 'ends' ],
+            [ '/version', 'ends' ],   
+            [ '/cgi-bin/', 'starts' ],                      
+            [ '/remote/', 'starts' ],                     
+            [ '/.env', 'starts' ],                     
+            [ '/owa/', 'starts' ],                        
+            [ '/autodiscover', 'starts' ],
+            [ '/Autodiscover', 'starts' ],
+            [ '/.git/', 'starts' ],                
+            [ '/.aws/ ', 'starts' ],
+            [ '.php', 'ends' ],
+            [ 'wp-', 'contains' ]
+        ],
+        'DLP_PHONE_NUMBERS': True,
+        'DLP_CC_NUMBERS': True,
+        'DLP_PRIVATE_KEYS': True,
+        'DLP_HASHES': True,
+        'DLP_WINDOWS_CREDS': True,
+        'DLP_LINUX_CREDS': True,
+        'DLP_LOG_LEAKED_DATA': True,
+        'UPLOAD_FILES': False,
+        'FLOOD_DELAY' : 60,
+        'FLOOD_RATIO' : 10,
+        'ERROR_FLOOD_DELAY' : 60,
+        'ERROR_FLOOD_RATIO' : 10,
+        'VERBOSE': 100
+    },
+    'monitor': {
+        'SECURITY_CHECKS': {
+            'path': 3,
+            'headers': 0,
+            'flood': 0,
+            'spoofing': 3,
+            'decoy': 3,
+            'format': 3,
+            'sqli': 3,
+            'xss': 3,
+            'hpp': 3,
+            'command': 3,
+            'method': 3,
+            'dlp': 3,
+            'brute': 3,
+            'ztaa': 0,
+            'prompt': 0,
+            'upload': 3
+        },
+        'DLP_PHONE_NUMBERS': True,
+        'DLP_CC_NUMBERS': True,
+        'DLP_PRIVATE_KEYS': True,
+        'DLP_HASHES': True,
+        'DLP_WINDOWS_CREDS': True,
+        'DLP_LINUX_CREDS': True,
+        'DLP_LOG_LEAKED_DATA': True,
+        'VERBOSE': 10
+    },
+    'llm': {
+        'APP_NAME' : 'LLM Frontend',
+        'SECURITY_CHECKS': {
+            'path': 1,
+            'headers': 0,
+            'flood': 2,
+            'spoofing': 0,
+            'decoy': 2,
+            'format': 2,
+            'sqli': 2,
+            'xss': 2,
+            'hpp': 2,
+            'command': 0,
+            'method': 0,
+            'dlp': 1,
+            'brute': 2,
+            'ztaa': 0,
+            'prompt': 2,
+            'upload': 1
+        }
+    },
+    'mcp': {
+        'APP_NAME' : 'MCP Server',
+        'SECURITY_CHECKS': {
+            'path': 1,
+            'headers': 0,
+            'flood': 2,
+            'spoofing': 0,
+            'decoy': 2,
+            'format': 2,
+            'sqli': 2,
+            'xss': 2,
+            'hpp': 2,
+            'command': 2,
+            'method': 0,
+            'dlp': 2,
+            'brute': 2,
+            'ztaa': 0,
+            'prompt': 0,
+            'upload': 2
+        },
+        'DLP_PHONE_NUMBERS': True,
+        'DLP_CC_NUMBERS': True,
+        'DLP_PRIVATE_KEYS': True,
+        'DLP_HASHES': True,
+        'DLP_WINDOWS_CREDS': True,
+        'DLP_LINUX_CREDS': True,
+        'DLP_LOG_LEAKED_DATA': True,
+        'VERBOSE': 100
+    }
 }
 
 #

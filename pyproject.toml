@@ -1,6 +1,6 @@
 [project]
 name = "pyrasp"
-version = "0.9.1"
+version = "0.9.2"
 authors = [
     { name = "Renaud Bidou", email = "renaud@paracyberbellum.io" }
 ]
@@ -14,7 +14,7 @@ classifiers = [
   "Programming Language :: Python",
   "Framework :: Flask",
   "Framework :: Django",
-  "Framework :: FastAPI"
+  "Framework :: FastAPI" 
 ]
 dependencies = [
   "scikit-learn==1.6.0",
@@ -23,7 +23,7 @@ dependencies = [
   "psutil>=6.0.0",
   "pyjwt==2.8.0",
   "cloudpickle==3.1.0",
-  "setuptools>=75.5.0",
+  "setuptools>=78.1.1",
   "loguru",
   "fastmcp",
   "importlib_resources",

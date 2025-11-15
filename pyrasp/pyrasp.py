@@ -1,4 +1,4 @@
-VERSION = '0.9.1'
+VERSION = '0.9.2'
 
 from pprint import pprint
 import time
@@ -24,10 +24,10 @@ import tiktoken
 
 # Flask
 try:
-    from flask import request, redirect, url_for
+    from flask import request
+    from flask import redirect as flask_redirect
     from flask import Response as FlaskResponse
     from flask.wrappers import Response as FlaskResponseType
-    from werkzeug.utils import import_string
 except:
     pass
 
@@ -35,6 +35,7 @@ except:
 try:
     from fastapi import Request
     from fastapi import Response as FastApiResponse
+    from fastapi.responses import RedirectResponse
     from starlette.routing import Match
     from starlette.concurrency import iterate_in_threadpool
 except:
@@ -44,6 +45,7 @@ except:
 try:
     from django.conf import settings as django_settings
     from django.http import HttpResponse
+    from django.shortcuts import redirect as django_redirect
     from django.urls import resolve, get_resolver, URLPattern
 except:
     pass
@@ -57,6 +59,7 @@ except:
 # MCP
 try:
     import mcp.types as types
+    import fastmcp
 except:
     pass
 
@@ -79,20 +82,20 @@ if all([
 try:
     from pyrasp.pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION, PROMPT_MODEL_VERSION
     from pyrasp.pyrasp_data import CLOUD_FUNCTIONS
-    from pyrasp.pyrasp_data import DEFAULT_CONFIG, DEFAULT_SECURITY_CHECKS
+    from pyrasp.pyrasp_data import DEFAULT_CONFIG, DEFAULT_SECURITY_CHECKS, CONFIG_TEMPLATES
     from pyrasp.pyrasp_data import ATTACKS, ATTACKS_CHECKS, ATTACKS_CODES, BRUTE_FORCE_ATTACKS
     from pyrasp.pyrasp_data import SQL_INJECTIONS_VECTORS, XSS_VECTORS, COMMAND_INJECTIONS_VECTORS, PROMPT_INJECTIONS_VECTORS
     from pyrasp.pyrasp_data import DLP_PATTERNS, PATTERN_CHECK_FUNCTIONS, B64_PATTERN
-    from pyrasp.pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE, ATTACK_ZTAA, ATTACK_PROMPT
+    from pyrasp.pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE, ATTACK_ZTAA, ATTACK_PROMPT, ATTACK_UPLOAD
     from pyrasp.pyrasp_data import PROMPT_GPT_CONFIG
 except:
     from pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION, PROMPT_MODEL_VERSION
     from pyrasp_data import CLOUD_FUNCTIONS
-    from pyrasp_data import DEFAULT_CONFIG, DEFAULT_SECURITY_CHECKS
+    from pyrasp_data import DEFAULT_CONFIG, DEFAULT_SECURITY_CHECKS, CONFIG_TEMPLATES
     from pyrasp_data import ATTACKS, ATTACKS_CHECKS, ATTACKS_CODES, BRUTE_FORCE_ATTACKS
     from pyrasp_data import SQL_INJECTIONS_VECTORS, XSS_VECTORS, COMMAND_INJECTIONS_VECTORS, PROMPT_INJECTIONS_VECTORS
     from pyrasp_data import DLP_PATTERNS, PATTERN_CHECK_FUNCTIONS, B64_PATTERN
-    from pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE, ATTACK_ZTAA, ATTACK_PROMPT
+    from pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE, ATTACK_ZTAA, ATTACK_PROMPT, ATTACK_UPLOAD
     from pyrasp_data import PROMPT_GPT_CONFIG
 
 # IP
@@ -294,15 +297,13 @@ class PyRASP():
     # CONSTRUCTOR & DESTRUCTOR
     ####################################################
 
-    def __init__(self, app = None, app_name = None, hosts = [], conf = None, key = None, cloud_url = None, verbose_level = 10, dev = False):
+    def __init__(self, app = None, template = 'default', conf = None, params = {}, key = None, cloud_url = None):
 
         # Set init verbosity
-        if not verbose_level == None:
-            self.INIT_VERBOSE = verbose_level
-
-        # Development mode
-        if dev:
-            pass
+        if 'VERBOSE' in params:
+            self.INIT_VERBOSE = params['VERBOSE']
+        else:
+            self.INIT_VERBOSE = 10
 
         # Start display
         self.print_screen(f'### PyRASP v{VERSION} ##########', init=True, new_line_up=True)
@@ -318,77 +319,82 @@ class PyRASP():
         # Configuration
         #
 
-        self.print_screen('[+] Loading default configuration', init=True, new_line_up = False)
-        for config_key in DEFAULT_CONFIG:
-            setattr(self, config_key, DEFAULT_CONFIG[config_key])
+        self.__set_config(template, conf, params, key, cloud_url)
 
-        # Load from server
-        ## Get cloud URL
-        if not cloud_url is None:
-            self.CLOUD_URL = cloud_url
-        else:
-            self.CLOUD_URL = os.environ.get('PYRASP_CLOUD_URL')
-    
-        if not self.CLOUD_URL is None:
-
-            ## Get key
-            if key:
-                self.KEY = key
-            else:
-                self.KEY = os.environ.get('PYRASP_KEY')
-
-            if self.KEY is None:
-                self.print_screen('[!] Agent key could not be found. Running default configuration.', init=True, new_line_up = True)
-            
-            if not self.load_cloud_config():
-                self.print_screen('[!] Could not load configuration from cloud server. Running default configuration.', init=True, new_line_up = True)
-            else:
-                self.API_STATUS['config'] = 'Cloud'
-
-        # Load configuration file
-        if not conf is None:
-            self.CONF_FILE = conf
-        else:
-            self.CONF_FILE = os.environ.get('PYRASP_CONF')
-
-        if not self.CONF_FILE is None:
-            if self.load_file_config(self.CONF_FILE):
-                self.API_STATUS['config'] = 'Local'
-
-        # Default config customization from 
-        if all([
-            self.CONF_FILE == None,
-            self.KEY == None,
-            not verbose_level == None
-        ]):
-            self.VERBOSE = verbose_level
-
-        if all([
-            self.CONF_FILE == None,
-            self.KEY == None,
-            not app_name == None
-        ]):
-            self.APP_NAME = app_name
-
-        if all([
-            self.CONF_FILE == None,
-            self.KEY== None,
-            len(hosts)
-        ]):
-            self.HOSTS = hosts
+        #
+        # Security
+        #
 
         # Register security checks
         if not app is None:
             self.register_security_checks(app)
 
+        # Load ML models
+
+        self.load_ml_models()
+
+        # Agent status
+        self.API_STATUS['version'] = VERSION
+        self.API_STATUS['xss_loaded'] = self.XSS_MODEL_LOADED
+        self.API_STATUS['sqli_loaded'] = self.SQLI_MODEL_LOADED
+        self.API_STATUS['prompt_loaded'] = self.PROMPT_MODEL_LOADED
+
+        #
+        # Multithreading - Logs & Beacon
+        #
+
+        # AWS, GCP & Azure
+        if self.PLATFORM in CLOUD_FUNCTIONS:
+            pass
+
+        # Other environments
+        else:   
+            from threading import Thread
+            from queue import Queue
+
+            # Start logging thread
+            if self.LOG_ENABLED:
+                self.start_logging()
+
+            # Start beacon thread
+            if self.BEACON:
+                self.start_beacon()
+
+        self.print_screen('[+] PyRASP succesfully started', init=True)
+        self.print_screen('############################', init=True, new_line_down=True)
+
+    def __del__(self):
+
+        if not self.PLATFORM in CLOUD_FUNCTIONS:
+
+            if self.BEACON:
+                global STOP_BEACON_THREAD
+                STOP_BEACON_THREAD = True
+
+            if self.LOG_ENABLED:
+                self.LOG_QUEUE.put('--STOP--')
+
+        return
+
+    ####################################################
+    # SECURITY SETUP
+    ####################################################
+
+    def load_ml_models(self):
+
         self.XSS_MODEL_LOADED = False
-        ## XSS & SQLI models loaded only if enabled in configuration
+        self.SQLI_MODEL_LOADED = False
+        self.PROMPT_MODEL_LOADED = False
+
+        self.load_xss_model()
+        self.load_sqli_model()
+        self.load_prompt_model()        
+        
+    def load_xss_model(self):
+ 
         if self.SECURITY_CHECKS.get('xss'):
             # Load XSS ML model
-            if not dev:
-                xss_model_file = 'xss_model-'+XSS_MODEL_VERSION
-            else:
-                xss_model_file = 'xss_model-dev'
+            xss_model_file = 'xss_model-'+XSS_MODEL_VERSION
 
             ## From source
             try:
@@ -413,14 +419,12 @@ class PyRASP():
             else:
                 self.print_screen('[+] XSS model loaded', init=True, new_line_up = False)
 
-        self.SQLI_MODEL_LOADED = False
+    def load_sqli_model(self):
+
         if self.SECURITY_CHECKS.get('sqli'):
             # Load SQLI ML model
-            if not dev:
-                sqli_model_file = 'sqli_model-'+SQLI_MODEL_VERSION
-            else:
-                sqli_model_file = 'sqli_model-dev'
-
+            sqli_model_file = 'sqli_model-'+SQLI_MODEL_VERSION
+            
             ## From source
             try:
                 self.sqli_model = cloudpickle.load(open('data/'+sqli_model_file,'rb'))
@@ -444,7 +448,7 @@ class PyRASP():
             else:
                 self.print_screen('[+] SQLI model loaded', init=True, new_line_up = False)
 
-        self.PROMPT_MODEL_LOADED = False
+    def load_prompt_model(self):
 
         ## Prompt Injection model loaded only if enabled in configuration
         if self.SECURITY_CHECKS.get('prompt'):
@@ -482,46 +486,6 @@ class PyRASP():
             else:
                 self.print_screen('[+] Prompt Injection model loaded', init=True, new_line_up = False)
 
-
-        # Agent status
-        self.API_STATUS['version'] = VERSION
-        self.API_STATUS['xss_loaded'] = self.XSS_MODEL_LOADED
-        self.API_STATUS['sqli_loaded'] = self.SQLI_MODEL_LOADED
-        self.API_STATUS['prompt_loaded'] = self.PROMPT_MODEL_LOADED
-
-        # AWS, GCP & Azure
-        if self.PLATFORM in CLOUD_FUNCTIONS:
-            pass
-
-        # Other environments
-        else:   
-            from threading import Thread
-            from queue import Queue
-
-            # Start logging thread
-            if self.LOG_ENABLED:
-                self.start_logging()
-
-            # Start beacon thread
-            if self.BEACON:
-                self.start_beacon()
-
-        self.print_screen('[+] PyRASP succesfully started', init=True)
-        self.print_screen('############################', init=True, new_line_down=True)
-
-    def __del__(self):
-
-        if not self.PLATFORM in CLOUD_FUNCTIONS:
-
-            if self.BEACON:
-                global STOP_BEACON_THREAD
-                STOP_BEACON_THREAD = True
-
-            if self.LOG_ENABLED:
-                self.LOG_QUEUE.put('--STOP--')
-
-        return
-    
     def register_security_checks(self, app):
         pass
 
@@ -717,112 +681,140 @@ class PyRASP():
     # CONFIGURATION
     ####################################################
 
-    def load_cloud_config(self):
+    def __set_config(self, template, conf, params, key, cloud_url):
 
-        result = False
+        if not template in CONFIG_TEMPLATES:
+            template = 'default'
 
-        self.print_screen(f'[+] Loading configuration from {self.CLOUD_URL}', init = True, new_line_up = False)
+        self.print_screen(f'[+] Loading template configuration: {template}', init=True, new_line_up = False)
 
-        #config_url = f'{self.cloud_protocol}://{self.cloud_server}:{self.cloud_port}/rasp/connect'
-        data = { 'key': self.KEY, 'version': VERSION, 'platform': self.PLATFORM, 'routes': self.ROUTES }
+        # Set template
+        template_config = DEFAULT_CONFIG.copy()
+        template_config.update(CONFIG_TEMPLATES[template])
 
-        error = False
-        
-        # Send requets to server
-        try:
-            r = requests.post(self.CLOUD_URL, json=data)
-        except Exception as e:
-            self.print_screen('[PyRASP] Error connecting to cloud server')
-            #self.print_screen(f'[!] Error connecting to cloud server: {str(e)}', init = True)
-            error = True
+        file_config = remote_config = params_config = {}
 
-        # Check response status
-        if not error:
-            if r.status_code == 403:
-                self.print_screen('[!] Invalid or missing agent key', init = True)
-                error = True
-            elif r.status_code == 404:
-                self.print_screen('[!] Security profile not found', init = True)
-                error = True
-            elif r.status_code == 500:
-                self.print_screen('[PyRASP] Server error')
-                error = True
+        # Load from file
+        file_config = self.__get_file_config(conf) if isinstance(conf, str) else {}
 
-        # Check response format
-        if not error:
-            try:
-                server_response = r.json()
-            except:
-                self.print_screen('[!] Corrupted server response')
-                error = True
+        # Load from server
+        remote_init = self.__get_cloud_config(cloud_url, key)
+        remote_config = remote_init.get('config') if 'config' in remote_init else {}
+        remote_blacklist = remote_init.get('blacklist') if 'blacklist' in remote_init else {}
 
-        # Get response data
-        if not error:
-            try:
-                server_message = server_response['message']
-                server_result = server_response['status']
-                config = server_response['data']
-            except:
-                self.print_screen('[!] Corrupted server response')
-                error = True
+        # Load from arguments
+        params_config = params if isinstance(params, dict) else {}
+    
+        # Build config 
+        config = template_config.copy()
+        config.update(file_config)
+        config.update(remote_config)
+        config.update(params_config)
 
-        # Check response status
-        if not error:
-            if not server_result:
-                self.print_screen(f'[!] Error: {server_message}')
-                error = True
+        # Set API
+        self.API_CONFIG = config
 
-        # Set configuration
-        if not error:
-            result = self.load_config(config)
+        # Set Blacklist
+        self.BLACKLIST = remote_blacklist
 
-        return result
+        # Set config
+        for config_key in config:
+            setattr(self, config_key, config[config_key])
+
+    def __get_cloud_config(self, cloud_url, key):
+
+        cloud_config = True
+        config =  {}
+
+        # Check cloud configuration
+        self.CLOUD_URL = cloud_url or os.environ.get('PYRASP_CLOUD_URL')
+
+        if self.CLOUD_URL is None:
+            cloud_config = False
+
+        # Check key
+        if cloud_config:
             
-    def load_file_config(self, conf_file):
+            self.KEY = key or os.environ.get('PYRASP_KEY')
 
-        result = True
+            if self.KEY is None:
+                self.print_screen('[!] Agent key could not be found.', init=True, new_line_up = True)
+                cloud_config = False
 
-        self.print_screen(f'[+] Loading configuration from {conf_file}', init = True, new_line_up = False)
+        # Get configuration
+        if cloud_config:
+
+            data = { 'key': self.KEY, 'version': VERSION, 'platform': self.PLATFORM, 'routes': self.ROUTES }
+            error = False
+
+            # Send requets to server
+            try:
+                r = requests.post(self.CLOUD_URL, json=data)
+            except Exception as e:
+                self.print_screen('[PyRASP] Error connecting to cloud server')
+                error = True
+
+            # Check response status
+            if not error:
+                if r.status_code == 403:
+                    self.print_screen('[!] Invalid or missing agent key', init = True)
+                    error = True
+                elif r.status_code == 404:
+                    self.print_screen('[!] Security profile not found', init = True)
+                    error = True
+                elif r.status_code == 500:
+                    self.print_screen('[PyRASP] Server error')
+                    error = True
+
+            # Check response format
+            if not error:
+                try:
+                    server_response = r.json()
+                except:
+                    self.print_screen('[!] Corrupted server response')
+                    error = True
+
+            # Get response data
+            if not error:
+                try:
+                    server_message = server_response['message']
+                    server_result = server_response['status']
+                except:
+                    self.print_screen('[!] Corrupted server response')
+                    error = True
+
+            # Check response status
+            if not error:
+                if not server_result:
+                    self.print_screen(f'[!] Error: {server_message}')
+                    error = True
+                else:
+                    config = server_response['data']
+
+        return config
+            
+    def __get_file_config(self, conf_file):
+
+        file_config = True
+        config =  {}
+
+        # Check file configuration
+        self.CONF_FILE = conf_file or os.environ.get('CONF_FILE')
+
+        if self.CONF_FILE is None:
+            file_config = False
+
+        if file_config:
+
+            self.print_screen(f'[+] Loading configuration from {self.CONF_FILE}', init = True, new_line_up = False)
 
         try:
             with open(conf_file) as f:
                 config = json.load(f)
         except Exception as e:
             self.print_screen(f'[!] Error reading {conf_file}: {str(e)}', init = True, new_line_up = False)
-            result = False
-        else:
-            self.load_config(config)
-
-        return result
-   
-    def load_config(self, config):
-
-        # Load parameters
-        config_params = config.get('config') or config
-        agent_config = DEFAULT_CONFIG.copy()
-        agent_config.update(config_params)
-
-        self.API_CONFIG = agent_config
-
-        for key in agent_config:
-            setattr(self, key, agent_config[key])
-
-        # Setting default security checks
-        for security_check in DEFAULT_SECURITY_CHECKS:
-            if agent_config['SECURITY_CHECKS'].get(security_check) == None:
-                agent_config['SECURITY_CHECKS'][security_check] = DEFAULT_SECURITY_CHECKS[security_check]
         
-        for key in agent_config:
-            self.print_screen(f'[+] {key} => {agent_config[key]}', 100, init=False)    
-
-        # Load blacklist
-        config_blacklist = config.get('blacklist')
-
-        if config_blacklist:
-
-            self.BLACKLIST = config_blacklist
-
-        return True
+        return config
 
     ####################################################
     # ATTACK HANDLING
@@ -975,6 +967,12 @@ class PyRASP():
                     if self.SECURITY_CHECKS.get('prompt') and self.PROMPT_MODEL_LOADED:
                         attack = self.check_prompt_injection(inject_vectors)
 
+                # Files upload
+                if attack == None:
+                    if self.SECURITY_CHECKS.get('upload'):
+                        files = self.get_files(request)
+                        attack = self.check_multipart_files(files)
+
         return attack
 
     # Outbound attacks
@@ -1016,7 +1014,7 @@ class PyRASP():
 
         if attack:
             if not log_only:
-                response = self.make_attack_response()
+                response = self.make_attack_response(attack)
             self.REQUESTS['attacks'] += 1
 
         elif response.status_code == 200:
@@ -1508,6 +1506,73 @@ class PyRASP():
 
         return attack
 
+    # Check Multipart File Upload
+    def check_multipart_files(self, files):
+        
+        attack = None
+
+        if len(files) > 0 and self.UPLOAD_FILES == False:
+
+            attack = {
+                'type': ATTACK_UPLOAD,
+                'details': {
+                    'location': 'multipart',
+                    'payload': 'file upload attempts'
+                }
+            }
+
+        else:
+
+            for filename, content in files:
+
+
+                # Check filename
+                if any([
+                    '..' in filename,
+                    '/' in filename,
+                    '\\' in filename
+                ]):
+                    attack = {
+                        'type': ATTACK_UPLOAD,
+                        'details': {
+                            'location': 'filename',
+                            'payload': filename
+                        }
+                    }
+
+                    break
+
+                # Check length
+                file_size = len(content)
+
+                if file_size > self.UPLOAD_MAX_SIZE * 1000000:
+                    attack = {
+                        'type': ATTACK_UPLOAD,
+                        'details': {
+                            'location': 'size',
+                            'payload': len(content)
+                        }
+                    }
+
+                    break
+
+                # Check extension
+                extension = os.path.splitext(filename)[1]
+                extension = extension[1:]
+
+                if not extension.lower() in self.UPLOAD_EXTENSIONS:
+                    attack = {
+                        'type': ATTACK_UPLOAD,
+                        'details': {
+                            'location': 'extension',
+                            'payload': extension
+                        }
+                    }
+
+                    break
+
+        return attack
+
     ####################################################
     # RESPONSE PROCESSING
     ####################################################
@@ -1518,8 +1583,35 @@ class PyRASP():
 
         return response
     
-    def make_attack_response(self):
+    def make_attack_response(self, attack = None):
 
+        attack_type = attack['type']
+        attack_code = ATTACKS_CHECKS[attack_type]
+        attack_action = 2 if attack_code == 'blacklist' else self.SECURITY_CHECKS[attack_code]
+
+        if attack_action == 2 and not self.BLACKLIST_OVERRIDE:
+            action = self.BLACKLIST_ACTION
+            status_code = self.BLACKLIST_STATUS_CODE
+            content = self.BLACKLIST_ACTION_CONTENT
+
+        else:
+            action = self.BLOCK_ACTION
+            status_code = self.BLOCK_STATUS_CODE
+            content = self.BLOCK_ACTION_CONTENT
+
+        if action == 'block':
+            response = self.build_block_response(status_code, content)
+        elif action == 'redirect':
+            response = self.build_redirect_response(status_code, content)
+        else:
+            response = self.build_block_response(status_code, content)
+
+        return response
+    
+    def build_block_response(self, status_code, content):
+        return None
+    
+    def build_redirect_response(self, status_code, content):
         return None
 
     ####################################################
@@ -1677,7 +1769,7 @@ class PyRASP():
                     pass
                     
         return vectors
-    
+
     # Remove exceptions from vectors
     def remove_exceptions(self, inject_vectors):
                     
@@ -1728,6 +1820,10 @@ class PyRASP():
     def get_request_headers(self, request):
 
         return {}
+
+    # Get multipart upload files
+    def get_files(self, request):
+        pass
 
     ####################################################
     # UTILS
@@ -2024,12 +2120,13 @@ class FlaskRASP(PyRASP):
 
     CURRENT_ATTACKS = {}
 
-    def __init__(self, app, app_name=None, hosts=[], conf=None, key=None, cloud_url=None,verbose_level=10, dev=False):
+    def __init__(self, app = None, template = 'default', conf = None, params = {}, key = None, cloud_url = None):
         self.PLATFORM = 'Flask'
-        super().__init__(app, app_name, hosts, conf, key, cloud_url, verbose_level, dev)
+        super().__init__(app, template, conf, params, key, cloud_url)
 
         if self.LOG_ENABLED or self.BEACON:
             signal.signal(signal.SIGINT, partial(handle_kb_interrupt, self))
+
             
     ####################################################
     # ROUTES
@@ -2159,13 +2256,17 @@ class FlaskRASP(PyRASP):
     # RESPONSE PROCESSING
     ####################################################
     
-    def make_attack_response(self):
+    def build_block_response(self, status_code, content):
 
         response = FlaskResponse()
-        response.set_data(self.GTFO_MSG)
-        response.status_code = self.DENY_STATUS_CODE
+        response.set_data(content)
+        response.status_code = status_code
 
         return response
+    
+    def build_redirect_response(self, status_code, content):
+        
+        return flask_redirect(content,code=status_code)
 
     ####################################################
     # PARAMS & VECTORS
@@ -2204,20 +2305,31 @@ class FlaskRASP(PyRASP):
 
         posted_data = {}
 
-        posted_data_full = request.get_data().decode()
+        try:
+            posted_data_full = request.get_data().decode()
 
-        posted_data_parts = posted_data_full.split('&')
+            posted_data_parts = posted_data_full.split('&')
 
-        for posted_data_part in posted_data_parts:
-            posted_data_tuple = posted_data_part.split('=')
-            if len(posted_data_tuple) == 2:
-                post_variable = posted_data_tuple[0]
-                post_value = posted_data_tuple[1]
+            for posted_data_part in posted_data_parts:
+                posted_data_tuple = posted_data_part.split('=')
+                if len(posted_data_tuple) == 2:
+                    post_variable = posted_data_tuple[0]
+                    post_value = posted_data_tuple[1]
 
-                if not post_variable in posted_data:
-                    posted_data[post_variable] = []
+                    if not post_variable in posted_data:
+                        posted_data[post_variable] = []
 
-                posted_data[post_variable].append(post_value)
+                    posted_data[post_variable].append(post_value)
+
+        except:
+            posted_data_full = request.form
+
+            for variable, value in posted_data_full.items():
+                if not variable in posted_data:
+                    posted_data[variable] = []
+                if not value in posted_data[variable]:
+                    posted_data[variable].append(value)
+
 
         return posted_data
 
@@ -2243,13 +2355,26 @@ class FlaskRASP(PyRASP):
 
         return headers
 
+     # Get multipart upload files
+
+    # Get multipart upload files
+    def get_files(self, request):
+        
+        files_list = []
+
+        for filename in request.files:
+            content = request.files[filename].read()
+            files_list.append([ filename, content ])
+
+        return files_list
+
 class FastApiRASP(PyRASP):
 
-    def __init__(self, app, app_name=None, hosts=[], conf=None, key=None, cloud_url=None, verbose_level=10, dev=False):
+    def __init__(self, app = None, template = 'default', conf = None, params = {}, key = None, cloud_url = None):
         self.PLATFORM = 'FastAPI'
 
         # Init
-        super().__init__(app, app_name, hosts, conf, key, cloud_url, verbose_level, dev)
+        super().__init__(app, template, conf, params, key, cloud_url)
 
         if self.LOG_ENABLED:
             @app.on_event("shutdown")
@@ -2373,12 +2498,15 @@ class FastApiRASP(PyRASP):
     # RESPONSE PROCESSING
     ####################################################
     
-    def make_attack_response(self):
+    def build_block_response(self, status_code, content):
 
-        response = FastApiResponse(content = self.GTFO_MSG, status_code= self.DENY_STATUS_CODE)
+        response = FastApiResponse(content = content, status_code= status_code)
         
         return response
 
+    def build_redirect_response(self, status_code, content):
+        
+        return RedirectResponse(content, status_code=status_code) 
 
     ####################################################
     # PARAMS & VECTORS
@@ -2531,6 +2659,11 @@ class DjangoRASP(PyRASP):
         self.get_response = get_response
 
         try:
+            template = django_settings.PYRASP_TEMPLATE or 'default'
+        except:
+            template = 'default'
+
+        try:
             conf = django_settings.PYRASP_CONF or None
         except:
             conf = None
@@ -2545,8 +2678,13 @@ class DjangoRASP(PyRASP):
         except:
             cloud_url = None
 
+        try:
+            params = django_settings.PYRASP_PARAMS or {}
+        except:
+            params = {}
+
         # Init
-        super().__init__(None, None, [], conf, key, cloud_url, 10, False)
+        super().__init__(None, template, conf, params, key, cloud_url)
 
     def __call__(self, request):
 
@@ -2656,18 +2794,24 @@ class DjangoRASP(PyRASP):
     # RESPONSE PROCESSING
     ####################################################
 
-    def make_attack_response(self):
+    def build_block_response(self, status_code, content):
 
         response = HttpResponse()
-        response.content = self.GTFO_MSG
-        response.status_code = self.DENY_STATUS_CODE
+        response.content = content
+        response.status_code = status_code
 
         return response
+    
+    def build_redirect_response(self, status_code, content):
+        
+        return django_redirect(content)
+
 
     ####################################################
     # UTILS
     ####################################################
     
+    # Get request params
     def get_params(self, request):
 
         request_path = request.path
@@ -2727,13 +2871,24 @@ class DjangoRASP(PyRASP):
 
         return headers
     
+    # Get multipart upload files
+    def get_files(self, request):
+        
+        files_list = []
+
+        for filename in request.FILES:
+            content = request.FILES[filename].read()
+            files_list.append([ filename, content ])
+
+        return files_list
+
 class LambdaRASP(PyRASP):
 
     LAST_BEACON = time.time()
 
-    def __init__(self, app=None, app_name=None, hosts=[], conf=None, key=None, cloud_url=None, verbose_level=10, dev=False):
+    def __init__(self, app = None, template = 'default', conf = None, params = {}, key = None, cloud_url = None):
         self.PLATFORM = 'AWS Lambda'
-        super().__init__(app, app_name, hosts, conf, key, cloud_url, verbose_level, dev)
+        super().__init__(app, template, conf, params, key, cloud_url)
         if self.BEACON:
             self.send_beacon()
 
@@ -2982,12 +3137,11 @@ class GcpRASP(FlaskRASP):
 
     LAST_BEACON = time.time()
 
-    def __init__(self, app=None, app_name=None, hosts=[], conf=None, key=None, cloud_url=None, verbose_level=10, dev=False):
+    def __init__(self, app = None, template = 'default', conf = None, params = {}, key = None, cloud_url = None):
         self.PLATFORM = 'Google Cloud Function'
-        super(FlaskRASP, self).__init__(app, app_name, hosts, conf, key, cloud_url, verbose_level, dev)
+        super(FlaskRASP, self).__init__(app, template, conf, params, key, cloud_url)
         if self.BEACON:
             self.send_beacon()
-
 
     ####################################################
     # CHECKS CONTROL
@@ -3065,7 +3219,7 @@ class GcpRASP(FlaskRASP):
 
         if attack:
             if not log_only:
-                response = self.make_attack_response()
+                response = self.make_attack_response(attack)
             self.REQUESTS['attacks'] += 1
 
         elif status_code == 200:
@@ -3076,13 +3230,17 @@ class GcpRASP(FlaskRASP):
 
         return response
     
-    def make_attack_response(self):
+    def build_block_response(self, status_code, content):
 
         response = FlaskResponse()
-        response.set_data(self.GTFO_MSG)
-        response.status_code = self.DENY_STATUS_CODE
+        response.set_data(content)
+        response.status_code = status_code
 
         return response
+
+    def build_redirect_response(self, status_code, content):
+        
+        return flask_redirect(content,code=status_code)
 
     def get_response_data(self, response):
 
@@ -3148,9 +3306,9 @@ class AzureRASP(PyRASP):
 
     LAST_BEACON = time.time()
 
-    def __init__(self, app=None, app_name=None, hosts=[], conf=None, key=None, cloud_url=None, verbose_level=10, dev=False):
+    def __init__(self, app = None, template = 'default', conf = None, params = {}, key = None, cloud_url = None):
         self.PLATFORM = 'Azure Function'
-        super().__init__(app, app_name, hosts, conf, key, cloud_url, verbose_level, dev)
+        super().__init__(app, template, conf, params, key, cloud_url)
 
     ####################################################
     # CHECKS CONTROL
@@ -3229,7 +3387,7 @@ class AzureRASP(PyRASP):
 
         if attack:
             if not log_only:
-                response = self.make_attack_response()
+                response = self.make_attack_response(attack)
             self.REQUESTS['attacks'] += 1
 
         elif status_code == 200:
@@ -3240,11 +3398,18 @@ class AzureRASP(PyRASP):
 
         return response
     
-    def make_attack_response(self):
+    def build_block_response(self, status_code, content):
 
-        response = func.HttpResponse(self.GTFO_MSG, status_code=self.DENY_STATUS_CODE)
+        response = func.HttpResponse(content, status_code=status_code)
 
         return response
+    
+    def build_redirect_response(self, status_code, content):
+
+        return func.HttpResponse(content,headers={'Location': content},status_code=status_code)
+    
+    
+
 
     ####################################################
     # PARAMS & VECTORS
@@ -3372,9 +3537,9 @@ class McpHostRASP(PyRASP):
 
     LAST_BEACON = time.time()
 
-    def __init__(self, app=None, app_name=None, hosts=[], conf=None, key=None, cloud_url=None, verbose_level=10, dev=False):
+    def __init__(self, app = None, template = 'default', conf = None, params = {}, key = None, cloud_url = None):
         self.PLATFORM = 'MCP Host'
-        super().__init__(app, app_name, hosts, conf, key, cloud_url, verbose_level, dev)
+        super().__init__(app, template, conf, params, key, cloud_url)
         if self.BEACON:
             self.send_beacon()
 
@@ -3503,13 +3668,13 @@ class McpHostRASP(PyRASP):
     
 class McpToolRASP(PyRASP):
 
-    def __init__(self, app=None, app_name=None, hosts=[], conf=None, key=None, cloud_url=None, verbose_level=10, dev=False):
+    def __init__(self, app = None, template = 'default', conf = None, params = {}, key = None, cloud_url = None):
         self.PLATFORM = 'MCP Tool'
-        super().__init__(app, app_name, hosts, conf, key, cloud_url, verbose_level, dev)
+        super().__init__(app, template, conf, params, key, cloud_url)
         if not self.APP_NAME:
             self.APP_NAME = app.name
         self.MCP_SERVER = app
-        self.MCP_SERVER_SETTINGS = app.settings
+        self.MCP_SERVER_SETTINGS = fastmcp.settings
 
     ####################################################
     # SECURITY CHECKS
@@ -3608,13 +3773,8 @@ class McpToolRASP(PyRASP):
     
     def process_response(self):
 
-        response = types.ServerResult(
-            types.CallToolResult(
-                content=[types.TextContent(type='text', text=self.GTFO_MSG)],
-                isError=True,
-            )
-        )
-        
+        response = self.BLOCK_ACTION_CONTENT
+
         return response
 
     ####################################################
