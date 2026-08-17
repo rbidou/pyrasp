@@ -1,0 +1,35 @@
+name: Test PyRASP
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-pyrasp:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python --version
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+          pip install pytest requests flask
+
+      - name: Start PyRASP-protected application
+        run: |
+          python test/main.py &
+          sleep 10
+
+      - name: Run tests
+        run: |
+          pytest -v test/test_main.py
