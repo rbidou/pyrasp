@@ -1,4 +1,4 @@
-VERSION = '0.9.2'
+VERSION = '0.9.3'
 
 from pprint import pprint
 import time
@@ -21,9 +21,12 @@ import cloudpickle
 import importlib_resources
 import torch
 import tiktoken
+from pathlib import Path
+import hashlib
 
 # Flask
 try:
+    from flask import g
     from flask import request
     from flask import redirect as flask_redirect
     from flask import Response as FlaskResponse
@@ -60,6 +63,7 @@ except:
 try:
     import mcp.types as types
     import fastmcp
+    from fastmcp.server.dependencies import get_http_request
 except:
     pass
 
@@ -67,13 +71,13 @@ except:
 try:
     from pyrasp.pyrasp_gpt import GPTModel
 except:
-    from pyrasp_gpt import GPTModel
+    from .pyrasp_gpt import GPTModel
 
 
 # MULTIPROCESSING - NOT FOR AWS & GCP ENVIRONMENTS
 if all([ 
-    os.environ.get("AWS_EXECUTION_ENV") is None,
-    os.environ.get("K_SERVICE") is None,
+    os.environ.get('AWS_EXECUTION_ENV') is None,
+    os.environ.get('K_SERVICE') is None,
 ]):
     from threading import Thread
     from queue import Queue
@@ -84,25 +88,30 @@ try:
     from pyrasp.pyrasp_data import CLOUD_FUNCTIONS
     from pyrasp.pyrasp_data import DEFAULT_CONFIG, DEFAULT_SECURITY_CHECKS, CONFIG_TEMPLATES
     from pyrasp.pyrasp_data import ATTACKS, ATTACKS_CHECKS, ATTACKS_CODES, BRUTE_FORCE_ATTACKS
-    from pyrasp.pyrasp_data import SQL_INJECTIONS_VECTORS, XSS_VECTORS, COMMAND_INJECTIONS_VECTORS, PROMPT_INJECTIONS_VECTORS
-    from pyrasp.pyrasp_data import DLP_PATTERNS, PATTERN_CHECK_FUNCTIONS, B64_PATTERN
-    from pyrasp.pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE, ATTACK_ZTAA, ATTACK_PROMPT, ATTACK_UPLOAD
+    from pyrasp.pyrasp_data import SQL_INJECTIONS_VECTORS, XSS_VECTORS, COMMAND_INJECTIONS_VECTORS, PROMPT_INJECTIONS_VECTORS, CHARS_VECTORS
+    from pyrasp.pyrasp_data import DLP_PATTERNS, PATTERN_CHECK_FUNCTIONS, B64_PATTERN, CHARS_PATTERNS
+    from pyrasp.pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE, ATTACK_ZTAA, ATTACK_PROMPT, ATTACK_UPLOAD, ATTACK_CHARS
     from pyrasp.pyrasp_data import PROMPT_GPT_CONFIG
+    from pyrasp.pyrasp_data import JA4H_EMPTY_HASH, JA4H_EXCLUDED, JA4H_METHOD_CODES, JA4H_VERSION_CODES
 except:
-    from pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION, PROMPT_MODEL_VERSION
-    from pyrasp_data import CLOUD_FUNCTIONS
-    from pyrasp_data import DEFAULT_CONFIG, DEFAULT_SECURITY_CHECKS, CONFIG_TEMPLATES
-    from pyrasp_data import ATTACKS, ATTACKS_CHECKS, ATTACKS_CODES, BRUTE_FORCE_ATTACKS
-    from pyrasp_data import SQL_INJECTIONS_VECTORS, XSS_VECTORS, COMMAND_INJECTIONS_VECTORS, PROMPT_INJECTIONS_VECTORS
-    from pyrasp_data import DLP_PATTERNS, PATTERN_CHECK_FUNCTIONS, B64_PATTERN
-    from pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE, ATTACK_ZTAA, ATTACK_PROMPT, ATTACK_UPLOAD
-    from pyrasp_data import PROMPT_GPT_CONFIG
+    from .pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION, PROMPT_MODEL_VERSION
+    from .pyrasp_data import CLOUD_FUNCTIONS
+    from .pyrasp_data import DEFAULT_CONFIG, DEFAULT_SECURITY_CHECKS, CONFIG_TEMPLATES
+    from .pyrasp_data import ATTACKS, ATTACKS_CHECKS, ATTACKS_CODES, BRUTE_FORCE_ATTACKS
+    from .pyrasp_data import SQL_INJECTIONS_VECTORS, XSS_VECTORS, COMMAND_INJECTIONS_VECTORS, PROMPT_INJECTIONS_VECTORS, CHARS_VECTORS
+    from .pyrasp_data import DLP_PATTERNS, PATTERN_CHECK_FUNCTIONS, B64_PATTERN, CHARS_PATTERNS
+    from .pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE, ATTACK_ZTAA, ATTACK_PROMPT, ATTACK_UPLOAD, ATTACK_CHARS
+    from .pyrasp_data import PROMPT_GPT_CONFIG
+    from .pyrasp_data import JA4H_EMPTY_HASH, JA4H_EXCLUDED, JA4H_METHOD_CODES, JA4H_VERSION_CODES, JA4H_AZURE_PLATFORM_HEADERS
 
 # IP
 IP_COUNTRY = {}
 STOP_LOG_THREAD = False
 STOP_BEACON_THREAD = False
 LOG_QUEUE = None
+
+# Local Path
+BASE_DIR = Path(__file__).resolve().parent
 
 # LOG FUNCTIONS
 def make_security_log(application, event_type, source_ip, log_format = 'syslog', user = None, event_details = {}, resolve_country = True):
@@ -118,7 +127,7 @@ def make_security_log(application, event_type, source_ip, log_format = 'syslog',
 
     if log_format.lower() == 'syslog':
 
-        time = datetime.now().strftime(r"%Y/%m/%d %H:%M:%S")
+        time = datetime.now().strftime(r'%Y/%m/%d %H:%M:%S')
         codes = ''
         if event_details.get('codes'):
             codes = ' - '.join(event_details['codes'])
@@ -143,7 +152,7 @@ def make_security_log(application, event_type, source_ip, log_format = 'syslog',
     elif log_format.lower() == 'json':
 
         data = {
-            'time': datetime.now().strftime(r"%Y/%m/%d %H:%M:%S"),
+            'time': datetime.now().strftime(r'%Y/%m/%d %H:%M:%S'),
             'application': application,
             'log_data': [ event_type, source_ip, country, event_details ]
         }
@@ -301,9 +310,9 @@ class PyRASP():
 
         # Set init verbosity
         if 'VERBOSE' in params:
-            self.INIT_VERBOSE = params['VERBOSE']
+            self.INIT_VERBOSE = self.VERBOSE = params['VERBOSE']
         else:
-            self.INIT_VERBOSE = 10
+            self.INIT_VERBOSE = self.VERBOSE = 10
 
         # Start display
         self.print_screen(f'### PyRASP v{VERSION} ##########', init=True, new_line_up=True)
@@ -357,7 +366,7 @@ class PyRASP():
                 self.start_logging()
 
             # Start beacon thread
-            if self.BEACON:
+            if getattr(self, 'BEACON', None):
                 self.start_beacon()
 
         self.print_screen('[+] PyRASP succesfully started', init=True)
@@ -367,7 +376,7 @@ class PyRASP():
 
         if not self.PLATFORM in CLOUD_FUNCTIONS:
 
-            if self.BEACON:
+            if getattr(self, 'BEACON', None):
                 global STOP_BEACON_THREAD
                 STOP_BEACON_THREAD = True
 
@@ -398,7 +407,7 @@ class PyRASP():
 
             ## From source
             try:
-                self.xss_model = cloudpickle.load(open('data/'+xss_model_file,'rb'))
+                self.xss_model = cloudpickle.load(open(BASE_DIR / 'data' / xss_model_file,'rb'))
             except Exception as e:
                 pass
             else:
@@ -427,7 +436,7 @@ class PyRASP():
             
             ## From source
             try:
-                self.sqli_model = cloudpickle.load(open('data/'+sqli_model_file,'rb'))
+                self.sqli_model = cloudpickle.load(open(BASE_DIR / 'data' / sqli_model_file,'rb'))
             except:
                 pass
             else:
@@ -496,7 +505,7 @@ class PyRASP():
     def start_beacon(self):
 
         self.print_screen('[+] Starting beacon process', init=True, new_line_up = False)
-        self.BEACON_THREAD = Thread(target=beacon_thread, args=(self, ))
+        self.BEACON_THREAD = Thread(target=beacon_thread, args=(self, ), daemon=True)
         self.BEACON_THREAD.start()
         
     def send_beacon(self):
@@ -658,7 +667,7 @@ class PyRASP():
 
         self.print_screen('[+] Starting logging process', init=True, new_line_up = False)
         self.LOG_QUEUE = Queue()
-        self.LOG_THREAD = Thread(target=log_thread, args=(self, self.LOG_QUEUE, self.LOG_SERVER, self.LOG_PORT, self.LOG_PROTOCOL, self.LOG_PATH ))
+        self.LOG_THREAD = Thread(target=log_thread, args=(self, self.LOG_QUEUE, self.LOG_SERVER, self.LOG_PORT, self.LOG_PROTOCOL, self.LOG_PATH ), daemon=True)
         self.LOG_THREAD.start()
         
     def log_security_event(self, event_type, source_ip, user = None, details = {}):
@@ -820,7 +829,7 @@ class PyRASP():
     # ATTACK HANDLING
     ####################################################
 
-    def handle_attack(self, attack, host, request_path, source_ip, timestamp):
+    def handle_attack(self, attack, host, request_path, source_ip, timestamp, ja4h_fingerprint = None):
 
         attack_id = attack['type']
         attack_check = ATTACKS_CHECKS[attack_id]
@@ -855,6 +864,10 @@ class PyRASP():
 
         # Path
         attack_details['path'] = request_path
+
+        # Ja4h fingerprint
+        if self.LOG_JA4H_FINGERPRINT and not ja4h_fingerprint is None:
+            attack_details['ja4h_fingerprint'] = ja4h_fingerprint
 
 
         # Print screen
@@ -946,6 +959,11 @@ class PyRASP():
                 if attack == None:
                     if self.SECURITY_CHECKS.get('headers'):
                         attack = self.check_headers(inject_vectors)
+
+                # Check suspicious characters
+                if attack == None:
+                    if self.SECURITY_CHECKS.get('chars'):
+                        attack = self.check_characters(inject_vectors)
 
                 # Check command injection
                 if attack == None:
@@ -1231,8 +1249,10 @@ class PyRASP():
             # Get collected values
             for injection in vectors[vector_type]:
 
+                str_injection = str(injection)
+
                 # Machine Learning check
-                sqli_probability = self.sqli_model.predict_proba([injection.lower()])[0]
+                sqli_probability = self.sqli_model.predict_proba([str_injection.lower()])[0]
                 if sqli_probability[1] > self.SQLI_PROBA:
                     sql_injection = True
                     attack = {
@@ -1511,6 +1531,9 @@ class PyRASP():
         
         attack = None
 
+        if files is None:
+            return attack
+
         if len(files) > 0 and self.UPLOAD_FILES == False:
 
             attack = {
@@ -1570,6 +1593,51 @@ class PyRASP():
                     }
 
                     break
+
+        return attack
+
+    # Check Characters
+    def check_characters(self, vectors):
+
+        attack = None
+        suspicious_characters = False
+
+        for vector_type in CHARS_VECTORS:
+
+            if not vector_type in vectors:
+                continue
+
+            for injection in vectors[vector_type]:
+
+                if self.CHARS_CYRILLIC:
+                    match = re.search(CHARS_PATTERNS['cyrillic'], injection)
+                    if not match is None:
+                        suspicious_characters = True
+                        break
+
+                if self.CHARS_NONPRINTABLE:
+                    match = re.search(CHARS_PATTERNS['non_printable'], injection)
+                    if not match is None:
+                        suspicious_characters = True
+                        break
+
+                if self.CHARS_INVISIBLE:
+                    match = re.search(CHARS_PATTERNS['invisible'], injection)
+                    if not match is None:
+                        suspicious_characters = True
+                        break
+
+            if suspicious_characters: 
+                break
+
+        if suspicious_characters:
+
+            attack = {
+                'type': ATTACK_CHARS,
+                'details': {
+                    'location': vector_type
+                }
+            }
 
         return attack
 
@@ -1824,6 +1892,133 @@ class PyRASP():
     # Get multipart upload files
     def get_files(self, request):
         pass
+
+    ####################################################
+    # JA4H FINGERPRINTING
+    ####################################################
+
+    def ja4h_fingerprint(self, request):
+
+        (http_method, http_version, headers) = self.get_ja4h_params(request)
+
+        method_code = self._ja4h_method_code(http_method)
+        version_code = self._ja4h_version_code(http_version)
+
+        headers_names = []
+        cookies = []
+        has_cookie = False
+        has_referer = False
+        language = None
+
+        for name, value in headers:
+            name = name.lower()
+            if name == 'cookie':
+                has_cookie = True
+                cookies.extend(self._ja4h_parse_cookie_header(value))
+                continue
+            if name == 'referer':
+                has_referer = True
+                continue
+            if name == 'accept-language' and language is None:
+                language = self._ja4h_language_code(value)
+
+            headers_names.append(name)
+
+        cookies.sort(key=lambda pair: (pair[0], pair[1] is not None, pair[1] or ''))
+
+        headers_count = min(len(headers_names), 99)
+
+        ja4h_parts = []
+
+        ja4h_a = ''.join(
+            (
+                method_code,
+                version_code,
+                'c' if has_cookie else 'n',
+                'r' if has_referer else 'n',
+                f'{headers_count:02d}',
+                language or '0000',
+            )
+        )
+        ja4h_parts.append(ja4h_a)
+
+        ja4h_b = self._ja4h_hash12(','.join(headers_names))
+        ja4h_parts.append(ja4h_b)
+
+        ja4h_c = self._ja4h_hash12(','.join(name for name, _ in cookies))
+        ja4h_parts.append(ja4h_c)
+
+        ja4h_d = self._ja4h_hash12(','.join( name if value is None else f'{name}={value}' for name, value in cookies ))
+        ja4h_parts.append(ja4h_d)
+
+        ja4h_fingerprint = '_'.join(ja4h_parts)
+
+        return ja4h_fingerprint
+
+    def get_ja4h_params(self, request):
+
+        method = JA4H_METHOD_CODES['GET']
+        version = JA4H_VERSION_CODES['HTTP/1.1']
+        headers = []
+
+        return (method, version, headers)
+
+    def _ja4h_parse_cookie_header(self, value):
+
+        pairs = []
+
+        for crumb in (value or '').split(';'):
+            crumb = crumb.strip()
+            if not crumb:
+                continue
+            name, sep, val = crumb.partition('=')
+            pairs.append((name.strip(), val if sep else None))
+
+        return pairs
+
+    def _ja4h_language_code(self, value = None):
+
+        if value is None:
+            return '0000'
+        
+        primary = value.split(',')[0].split(';')[0].strip()
+        letters = ''.join(c for c in primary if c.isalpha())[:4].lower()
+
+        return letters.ljust(4, '0')
+
+    def _ja4h_hash12(self, joined):
+    
+        if not joined:
+            return JA4H_EMPTY_HASH
+
+        return hashlib.sha256(joined.encode('utf-8')).hexdigest()[:12]
+ 
+ 
+    def _ja4h_method_code(self, method):
+        
+        method = (method or '').upper()
+
+        method_code = JA4H_METHOD_CODES.get(method) or (method.lower() + '00')[:2]
+
+        return method_code
+ 
+    def _ja4h_version_code(self, version):
+
+        if isinstance(version, (int, float)):
+            version = str(version)
+
+        key = (version or '').strip().upper()
+        if key in JA4H_VERSION_CODES:
+            return JA4H_VERSION_CODES[key]
+        # Fall back to major/minor parsing, e.g. 'HTTP/1.2' -> '12'.
+        digits = key.split('/')[-1]
+        parts = digits.split('.')
+        try:
+            major = int(parts[0])
+            minor = int(parts[1]) if len(parts) > 1 else 0
+        except (ValueError, IndexError):
+            return '00'
+        return f'{major % 10}{minor % 10}'
 
     ####################################################
     # UTILS
@@ -2118,8 +2313,6 @@ class PyRASP():
 
 class FlaskRASP(PyRASP):
 
-    CURRENT_ATTACKS = {}
-
     def __init__(self, app = None, template = 'default', conf = None, params = {}, key = None, cloud_url = None):
         self.PLATFORM = 'Flask'
         super().__init__(app, template, conf, params, key, cloud_url)
@@ -2164,6 +2357,9 @@ class FlaskRASP(PyRASP):
         def before_request_callback():
 
             (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
+
+            if self.LOG_JA4H_FINGERPRINT:
+                setattr(g, 'ja4h_fingerprint', self.ja4h_fingerprint(request))
             
             attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request)
 
@@ -2171,8 +2367,7 @@ class FlaskRASP(PyRASP):
             if not attack == None:
                 security_check = ATTACKS_CHECKS[attack['type']]
                 if not self.SECURITY_CHECKS.get(security_check) == 3:
-                    attack_id = '::'.join([host, request_method, request_path, source_ip])
-                    self.CURRENT_ATTACKS[attack_id] = attack                
+                    setattr(g, 'attack', attack)        
                     return FlaskResponse()
         
     # Outgoing responses
@@ -2190,11 +2385,10 @@ class FlaskRASP(PyRASP):
             inbound_attack_type = None
 
             # Get attack from @before_request checks
-            attack_id = '::'.join([host, request_method, request_path, source_ip])
-            current_attack = self.CURRENT_ATTACKS.get(attack_id)
-            if current_attack:
+            current_attack = getattr(g, 'attack', None)
+            
+            if current_attack is not None:
                 request_attack = current_attack
-                del self.CURRENT_ATTACKS[attack_id]
 
             status_code = response.status_code
             inbound_attack_type = current_attack['type'] if current_attack else None
@@ -2214,9 +2408,9 @@ class FlaskRASP(PyRASP):
                 security_check = ATTACKS_CHECKS[request_attack['type']]
             
             if response_attack:
-                self.handle_attack(response_attack, host, request_path, source_ip, timestamp)
+                self.handle_attack(response_attack, host, request_path, source_ip, timestamp, ja4h_fingerprint=getattr(g, 'ja4h_fingerprint', None))
             elif request_attack:
-                self.handle_attack(request_attack, host, request_path, source_ip, timestamp)
+                self.handle_attack(request_attack, host, request_path, source_ip, timestamp, ja4h_fingerprint=getattr(g, 'ja4h_fingerprint', None))
 
             # Check log only
             if security_check and self.SECURITY_CHECKS.get(security_check) == 3:
@@ -2368,7 +2562,22 @@ class FlaskRASP(PyRASP):
 
         return files_list
 
+    ####################################################
+    # JA4H FINGERPRINTING
+    ####################################################
+
+    def get_ja4h_params(self, request):
+
+        version = request.environ.get('SERVER_PROTOCOL', 'HTTP/1.1')
+        method = request.method
+        headers = [ [ name.lower(), value.lower() ] for name, value in list(request.headers.items()) ]
+
+        return (method, version, headers)
+
 class FastApiRASP(PyRASP):
+
+    from contextlib import asynccontextmanager
+    
 
     def __init__(self, app = None, template = 'default', conf = None, params = {}, key = None, cloud_url = None):
         self.PLATFORM = 'FastAPI'
@@ -2376,15 +2585,17 @@ class FastApiRASP(PyRASP):
         # Init
         super().__init__(app, template, conf, params, key, cloud_url)
 
+        """ Deprecated - seems to work without being replaced...
         if self.LOG_ENABLED:
             @app.on_event("shutdown")
             async def shutdown_event():
-                if self.BEACON:
+                if getattr(self, "BEACON", None):
                     global STOP_BEACON_THREAD
                     STOP_BEACON_THREAD = True
 
                 if self.LOG_ENABLED:
                     self.LOG_QUEUE.put('--STOP--')
+        """
                 
     def register_security_checks(self, app):
 
@@ -2404,6 +2615,9 @@ class FastApiRASP(PyRASP):
             vectors = await self.get_vectors(request) 
             vectors = self.remove_exceptions(vectors) 
 
+            # Ja4h fingerprint
+            ja4h_fingerprint = self.ja4h_fingerprint(request) if self.LOG_JA4H_FINGERPRINT else None
+            
             # Check inboud attacks
             inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request, vectors)
               
@@ -2436,9 +2650,9 @@ class FastApiRASP(PyRASP):
                 security_check = ATTACKS_CHECKS[outbound_attack['type']]
 
             if outbound_attack:
-                self.handle_attack(outbound_attack, host, request_path, source_ip, timestamp)
+                self.handle_attack(outbound_attack, host, request_path, source_ip, timestamp, ja4h_fingerprint=ja4h_fingerprint)
             elif inbound_attack:
-                self.handle_attack(inbound_attack, host, request_path, source_ip, timestamp)
+                self.handle_attack(inbound_attack, host, request_path, source_ip, timestamp, ja4h_fingerprint=ja4h_fingerprint)
 
             # Check log only
             if security_check and self.SECURITY_CHECKS.get(security_check) == 3:
@@ -2456,15 +2670,19 @@ class FastApiRASP(PyRASP):
 
         app_routes = {}
 
-        for route in app.routes:
-            endpoint = route.name
-            methods = list(route.methods)
-            path = route.path
 
-            app_routes[endpoint] = {
-                'methods': methods,
-                'path': path
-            }
+        for route in app.routes:
+            try:
+                endpoint = route.name
+                methods = list(route.methods)
+                path = route.path
+            except:
+                pass
+            else:
+                app_routes[endpoint] = {
+                    'methods': methods,
+                    'path': path
+                }
 
         return app_routes
 
@@ -2651,6 +2869,29 @@ class FastApiRASP(PyRASP):
 
         return vectors
 
+    ####################################################
+    # JA4H FINGERPRINTING
+    ####################################################
+
+    def get_ja4h_params(self, request):
+
+        scope = request.scope
+
+        version = 'HTTP/' + str(scope.get('http_version') or '1.1')
+        method = request.method
+
+        raw_headers = [
+        (
+            name.decode('latin-1') if isinstance(name, bytes) else name,
+            value.decode('latin-1') if isinstance(value, bytes) else value,
+        )
+        for name, value in request.headers.raw
+    ]
+
+        headers = [ [ name.lower(), value.lower() ] for name, value in raw_headers ]
+
+        return (method, version, headers)
+
 class DjangoRASP(PyRASP):
 
     def __init__(self, get_response):
@@ -2698,6 +2939,9 @@ class DjangoRASP(PyRASP):
         # Get Main params
         (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
 
+        # Ja4h fingerprint
+        ja4h_fingerprint = self.ja4h_fingerprint(request) if self.LOG_JA4H_FINGERPRINT else None
+
         # Check inboud attacks
         inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request)
 
@@ -2725,9 +2969,9 @@ class DjangoRASP(PyRASP):
             security_check = ATTACKS_CHECKS[outbound_attack['type']]
 
         if outbound_attack:
-            self.handle_attack(outbound_attack, host, request_path, source_ip, timestamp)
+            self.handle_attack(outbound_attack, host, request_path, source_ip, timestamp, ja4h_fingerprint=ja4h_fingerprint)
         elif inbound_attack:
-            self.handle_attack(inbound_attack, host, request_path, source_ip, timestamp)
+            self.handle_attack(inbound_attack, host, request_path, source_ip, timestamp, ja4h_fingerprint=ja4h_fingerprint)
 
         # Check log only
         if security_check and self.SECURITY_CHECKS.get(security_check) == 3:
@@ -2882,6 +3126,23 @@ class DjangoRASP(PyRASP):
 
         return files_list
 
+    ####################################################
+    # JA4H FINGERPRINTING
+    ####################################################
+
+    def get_ja4h_params(self, request):
+
+        method = request.method
+
+        meta = request.META
+        version = meta.get('SERVER_PROTOCOL', 'HTTP/1.1')
+    
+        request_headers = getattr(request, 'headers', None)
+
+        headers = [ [ name.lower(), value.lower() ] for name, value in list(request_headers.items()) ]
+
+        return (method, version, headers)
+    
 class LambdaRASP(PyRASP):
 
     LAST_BEACON = time.time()
@@ -2889,7 +3150,7 @@ class LambdaRASP(PyRASP):
     def __init__(self, app = None, template = 'default', conf = None, params = {}, key = None, cloud_url = None):
         self.PLATFORM = 'AWS Lambda'
         super().__init__(app, template, conf, params, key, cloud_url)
-        if self.BEACON:
+        if getattr(self, 'BEACON', None):
             self.send_beacon()
 
     ####################################################
@@ -2911,7 +3172,7 @@ class LambdaRASP(PyRASP):
 
             # Sending beacons to get configuration and blacklist updates
             time_now = time.time()
-            if self.BEACON and time_now > self.LAST_BEACON + self.BEACON_DELAY:
+            if getattr(self, 'BEACON', None) and time_now > self.LAST_BEACON + self.BEACON_DELAY:
                 self.send_beacon()
                 self.LAST_BEACON = time_now
 
@@ -3140,7 +3401,7 @@ class GcpRASP(FlaskRASP):
     def __init__(self, app = None, template = 'default', conf = None, params = {}, key = None, cloud_url = None):
         self.PLATFORM = 'Google Cloud Function'
         super(FlaskRASP, self).__init__(app, template, conf, params, key, cloud_url)
-        if self.BEACON:
+        if getattr(self, 'BEACON', None):
             self.send_beacon()
 
     ####################################################
@@ -3155,11 +3416,14 @@ class GcpRASP(FlaskRASP):
 
             # Sending beacons to get configuration and blacklist updates
             time_now = time.time()
-            if self.BEACON and time_now > self.LAST_BEACON + self.BEACON_DELAY:
+            if getattr(self, 'BEACON', None) and time_now > self.LAST_BEACON + self.BEACON_DELAY:
                 self.send_beacon()
                 self.LAST_BEACON = time_now
 
             (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
+
+            # Ja4h fingerprint
+            ja4h_fingerprint = self.ja4h_fingerprint(request) if self.LOG_JA4H_FINGERPRINT else None
 
             # Analyze request
             inbound_attack = None
@@ -3187,9 +3451,9 @@ class GcpRASP(FlaskRASP):
                 security_check = ATTACKS_CHECKS[outbound_attack['type']]
 
             if outbound_attack:
-                self.handle_attack(outbound_attack, host, request_path, source_ip, timestamp)
+                self.handle_attack(outbound_attack, host, request_path, source_ip, timestamp, ja4h_fingerprint=ja4h_fingerprint)
             elif inbound_attack:
-                self.handle_attack(inbound_attack, host, request_path, source_ip, timestamp)
+                self.handle_attack(inbound_attack, host, request_path, source_ip, timestamp, ja4h_fingerprint=ja4h_fingerprint)
 
             # Check log only
             if security_check and self.SECURITY_CHECKS.get(security_check) == 3:
@@ -3324,11 +3588,14 @@ class AzureRASP(PyRASP):
 
             # Sending beacons to get configuration and blacklist updates
             time_now = time.time()
-            if self.BEACON and time_now > self.LAST_BEACON + self.BEACON_DELAY:
+            if getattr(self, 'BEACON', None) and time_now > self.LAST_BEACON + self.BEACON_DELAY:
                 self.send_beacon()
                 self.LAST_BEACON = time_now
 
             (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
+
+            # Ja4h fingerprint
+            ja4h_fingerprint = self.ja4h_fingerprint(request) if self.LOG_JA4H_FINGERPRINT else None
 
             # Analyze request
             inbound_attack = None
@@ -3342,8 +3609,6 @@ class AzureRASP(PyRASP):
 
             if inbound_attack:
                 security_check = ATTACKS_CHECKS[inbound_attack['type']]
-
-            
 
             if any([
                 inbound_attack is None,
@@ -3362,9 +3627,9 @@ class AzureRASP(PyRASP):
                 security_check = ATTACKS_CHECKS[outbound_attack['type']]
 
             if outbound_attack:
-                self.handle_attack(outbound_attack, host, request_path, source_ip, timestamp)
+                self.handle_attack(outbound_attack, host, request_path, source_ip, timestamp, ja4h_fingerprint=ja4h_fingerprint)
             elif inbound_attack:
-                self.handle_attack(inbound_attack, host, request_path, source_ip, timestamp)
+                self.handle_attack(inbound_attack, host, request_path, source_ip, timestamp, ja4h_fingerprint=ja4h_fingerprint)
 
             # Check log only
             if security_check and self.SECURITY_CHECKS.get(security_check) == 3:
@@ -3408,9 +3673,6 @@ class AzureRASP(PyRASP):
 
         return func.HttpResponse(content,headers={'Location': content},status_code=status_code)
     
-    
-
-
     ####################################################
     # PARAMS & VECTORS
     ####################################################
@@ -3533,6 +3795,37 @@ class AzureRASP(PyRASP):
         except:
             pass
 
+    ####################################################
+    # JA4H FINGERPRINTING
+    ####################################################
+
+    def get_ja4h_params(self, request):
+
+        method = getattr(request, 'method', 'GET')
+        version = 'HTTP/1.1'
+        request_headers = getattr(request, 'headers', None)
+
+        headers = [ [ name.lower(), value.lower() ] for name, value in list(request_headers.items()) ]
+
+        return (method, version, headers)
+
+    def _ja4h_strip_azure_headers(raw_headers):
+    
+        exact = JA4H_AZURE_PLATFORM_HEADERS['exact']
+        prefixes = JA4H_AZURE_PLATFORM_HEADERS['prefixes']
+
+        headers = []
+
+        for name, value in raw_headers:
+            lowered = name.lower()
+
+            if lowered in exact or lowered.startswith(prefixes):
+                continue
+
+            headers.append((name, value))
+
+        return headers
+
 class McpHostRASP(PyRASP):
 
     LAST_BEACON = time.time()
@@ -3540,7 +3833,7 @@ class McpHostRASP(PyRASP):
     def __init__(self, app = None, template = 'default', conf = None, params = {}, key = None, cloud_url = None):
         self.PLATFORM = 'MCP Host'
         super().__init__(app, template, conf, params, key, cloud_url)
-        if self.BEACON:
+        if getattr(self, 'BEACON', None):
             self.send_beacon()
 
     ####################################################
@@ -3698,6 +3991,10 @@ class McpToolRASP(PyRASP):
             # Get vectors - need to do it here as async
             inbound_vectors = self.get_vectors(**kwargs) 
             inbound_vectors = self.remove_exceptions(inbound_vectors) 
+            
+            # Ja4h fingerprint
+            request = get_http_request()
+            ja4h_fingerprint = self.ja4h_fingerprint(request) if self.LOG_JA4H_FINGERPRINT else None
 
             # Check inboud attacks
             inbound_attack = self.check_inbound_attacks(inbound_vectors)
@@ -3718,9 +4015,9 @@ class McpToolRASP(PyRASP):
                 security_check = ATTACKS_CHECKS[outbound_attack['type']]
 
             if outbound_attack:
-                self.handle_attack(outbound_attack, host, request_path, source_ip, timestamp)
+                self.handle_attack(outbound_attack, host, request_path, source_ip, timestamp, ja4h_fingerprint=ja4h_fingerprint)
             elif inbound_attack:
-                self.handle_attack(inbound_attack, host, request_path, source_ip, timestamp)
+                self.handle_attack(inbound_attack, host, request_path, source_ip, timestamp, ja4h_fingerprint=ja4h_fingerprint)
 
             # Set response
             if (inbound_attack or outbound_attack) and not self.SECURITY_CHECKS.get(security_check) == 3:
@@ -3799,5 +4096,27 @@ class McpToolRASP(PyRASP):
                 
         return input_vectors
 
+    ####################################################
+    # JA4H FINGERPRINTING
+    ####################################################
 
+    def get_ja4h_params(self, request):
+
+        scope = request.scope
+
+        version = 'HTTP/' + str(scope.get('http_version') or '1.1')
+        method = request.method
+
+        raw_headers = [
+        (
+            name.decode('latin-1') if isinstance(name, bytes) else name,
+            value.decode('latin-1') if isinstance(value, bytes) else value,
+        )
+        for name, value in request.headers.raw
+    ]
+
+        headers = [ [ name.lower(), value.lower() ] for name, value in raw_headers ]
+
+        return (method, version, headers)
+    
     

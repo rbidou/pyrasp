@@ -2,9 +2,9 @@
 # VERSION
 #
 
-DATA_VERSION = '1.1.0'
+DATA_VERSION = '1.2.0'
 XSS_MODEL_VERSION = '3.1.0'
-SQLI_MODEL_VERSION = '3.1.0'
+SQLI_MODEL_VERSION = '3.1.1'
 PROMPT_MODEL_VERSION = '1.0.0'
 
 #
@@ -39,7 +39,8 @@ ATTACKS = [
     'Brute Force',          # 12
     'Zero-Trust',           # 13
     'Prompt Injection',     # 14
-    'Upload Validation'     # 15
+    'Upload Validation',    # 15
+    'Suspicious Characters' # 16
 ]
 
 BRUTE_FORCE_ATTACKS = [ 1, 3, 5, 10 ]
@@ -61,6 +62,7 @@ ATTACK_BRUTE = 12
 ATTACK_ZTAA = 13
 ATTACK_PROMPT = 14
 ATTACK_UPLOAD = 15
+ATTACK_CHARS = 16
 
 ATTACKS_CHECKS = [
     'blacklist',
@@ -78,7 +80,8 @@ ATTACKS_CHECKS = [
     'brute',
     'ztaa',
     'prompt',
-    'upload'
+    'upload',
+    'chars'
 ]
 
 ATTACKS_CODES = {
@@ -97,7 +100,8 @@ ATTACKS_CODES = {
     ATTACK_BRUTE : ['T1110', 'PCB012'],
     ATTACK_ZTAA: [ 'PCB013' ],
     ATTACK_PROMPT: ['AML.T0051.000', 'PCB014' ],
-    ATTACK_UPLOAD: [ 'PCB015' ]
+    ATTACK_UPLOAD: [ 'PCB015' ],
+    ATTACK_CHARS: [ 'T1027.018', 'PCB016']
 }
    
 
@@ -105,6 +109,7 @@ SQL_INJECTIONS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_
 XSS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_values', 'headers_values', 'mcp_values' ]
 COMMAND_INJECTIONS_VECTORS = [ 'qs_values', 'post_values', 'json_values', 'mcp_values' ]
 PROMPT_INJECTIONS_VECTORS = [ 'qs_values', 'post_values', 'json_values', 'mcp_values' ]
+CHARS_VECTORS = [ 'path', 'qs_values', 'json_values', 'headers_values', 'mcp_values' ]
 
 DLP_PATTERNS = {
     'phone': [ r'(011|00|\+)((?:9[679]|8[035789]|6[789]|5[90]|42|3[578]|2[1-689])|9[0-58]|8[1246]|6[0-6]|5[1-8]|4[013-9]|3[0-469]|2[70]|7|1)(?:\W*\d){0,13}\d' ],
@@ -128,6 +133,12 @@ DLP_PATTERNS = {
 
 B64_PATTERN = r'^(?:[A-Za-z0-9+/]{4})+(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$'
 
+CHARS_PATTERNS = {
+    'cyrillic': r'[\u0400-\u04FF]',
+    'non_printable': r'[\x00-\x08\x0b\x0c\x0e-\x1f]',
+    'invisible': r'[\u034F\u061C\u180E\u200B-\u200F\u202A-\u202E\u2061-\u206F\uFE00-\uFE0F\uFEFF]'
+}
+
 #
 # DEFAULT CONFIGURATION
 #
@@ -148,7 +159,8 @@ DEFAULT_SECURITY_CHECKS = {
     'brute': 2,
     'ztaa': 0,
     'prompt': 0,
-    'upload': 0
+    'upload': 0,
+    'chars': 0
 }
 
 DEFAULT_CONFIG = {
@@ -225,6 +237,7 @@ DEFAULT_CONFIG = {
     'LOG_PATH': '',
     'LOG_FILE_SIZE': 50,
     'RESOLVE_COUNTRY': True,
+    'LOG_JA4H_FINGERPRINT': False,
 
     'CHANGE_SERVER': True,
     'SERVER_HEADER': 'Apache',
@@ -234,9 +247,13 @@ DEFAULT_CONFIG = {
     'BEACON_URL': None,
     'BEACON_DELAY': 30,
 
-    'ZTAA_KEY_HEADER': 'pcb-ztaa',
-    'ZTAA_KEY': '',
-    'ZTAA_BROWSER_VERSION': False
+    'ZTAA_HEADER': 'pcb-ztaa',
+    'ZTAA_KEYS': [],
+    'ZTAA_BROWSER_VERSION': False,
+
+    'CHARS_CYRILLIC': False,
+    'CHARS_INVISIBLE': False,
+    'CHARS_NONPRINTABLE': False
 }
 
 #
@@ -262,7 +279,8 @@ CONFIG_TEMPLATES = {
             'brute': 2,
             'ztaa': 0,
             'prompt': 0,
-            'upload': 2
+            'upload': 2,
+            'chars': 2
         },
         'DECOY_ROUTES' : [ 
             [ '/admin', 'ends' ],
@@ -292,6 +310,10 @@ CONFIG_TEMPLATES = {
         'FLOOD_RATIO' : 10,
         'ERROR_FLOOD_DELAY' : 60,
         'ERROR_FLOOD_RATIO' : 10,
+        'CHARS_CYRILLIC': True,
+        'CHARS_INVISIBLE': True,
+        'CHARS_NONPRINTABLE': True,
+        'LOG_JA4H_FINGERPRINT': True,
         'VERBOSE': 100
     },
     'monitor': {
@@ -311,7 +333,8 @@ CONFIG_TEMPLATES = {
             'brute': 3,
             'ztaa': 0,
             'prompt': 0,
-            'upload': 3
+            'upload': 3,
+            'chars': 3
         },
         'DLP_PHONE_NUMBERS': True,
         'DLP_CC_NUMBERS': True,
@@ -320,6 +343,9 @@ CONFIG_TEMPLATES = {
         'DLP_WINDOWS_CREDS': True,
         'DLP_LINUX_CREDS': True,
         'DLP_LOG_LEAKED_DATA': True,
+        'CHARS_CYRILLIC': True,
+        'CHARS_INVISIBLE': True,
+        'CHARS_NONPRINTABLE': False,
         'VERBOSE': 10
     },
     'llm': {
@@ -340,8 +366,11 @@ CONFIG_TEMPLATES = {
             'brute': 2,
             'ztaa': 0,
             'prompt': 2,
-            'upload': 1
-        }
+            'upload': 1,
+            'chars': 2
+        },
+        'CHARS_CYRILLIC': True,
+        'CHARS_INVISIBLE': True,
     },
     'mcp': {
         'APP_NAME' : 'MCP Server',
@@ -361,7 +390,8 @@ CONFIG_TEMPLATES = {
             'brute': 2,
             'ztaa': 0,
             'prompt': 0,
-            'upload': 2
+            'upload': 2,
+            'chars': 1
         },
         'DLP_PHONE_NUMBERS': True,
         'DLP_CC_NUMBERS': True,
@@ -370,6 +400,8 @@ CONFIG_TEMPLATES = {
         'DLP_WINDOWS_CREDS': True,
         'DLP_LINUX_CREDS': True,
         'DLP_LOG_LEAKED_DATA': True,
+        'CHARS_CYRILLIC': True,
+        'CHARS_INVISIBLE': True,
         'VERBOSE': 100
     }
 }
@@ -387,4 +419,66 @@ PROMPT_GPT_CONFIG = {
     'n_heads': 8,
     'drop_rate': 0.0,
     'pad_id': 50256
+}
+
+#
+# JA4H FINGERPRINTS
+#
+
+JA4H_EMPTY_HASH = '0' * 12
+ 
+JA4H_EXCLUDED = frozenset({'cookie', 'referer'})
+ 
+JA4H_METHOD_CODES = {
+    'CONNECT': 'co',
+    'DELETE': 'de',
+    'GET': 'ge',
+    'HEAD': 'he',
+    'OPTIONS': 'op',
+    'PATCH': 'pa',
+    'POST': 'po',
+    'PUT': 'pu',
+    'TRACE': 'tr',
+}
+ 
+JA4H_VERSION_CODES = {
+    'HTTP/0.9': '09',
+    'HTTP/1.0': '10',
+    'HTTP/1.1': '11',
+    'HTTP/2': '20',
+    'HTTP/2.0': '20',
+    'HTTP/3': '30',
+    'HTTP/3.0': '30',
+    'H2': '20',
+    'H3': '30',
+    '1.0': '10',
+    '1.1': '11',
+    '2': '20',
+    '2.0': '20',
+    '3': '30',
+    '3.0': '30',
+}
+
+JA4H_AZURE_PLATFORM_HEADERS = {
+    'exact': frozenset(
+        {
+            'disguised-host',
+            'was-default-hostname',
+            'client-ip',
+            'x-client-ip',
+            'x-client-port',
+            'x-arr-log-id',
+            'x-arr-ssl',
+            'x-original-url',
+            'x-waws-unencoded-url',
+            'x-site-deployment-id',
+            'x-appservice-proto',
+            'x-forwarded-for',
+            'x-forwarded-host',
+            'x-forwarded-proto',
+            'x-forwarded-tlsversion',
+            'max-forwards',
+        }
+    ),
+    'prefixes': ('x-ms-', 'x-azure-', 'x-fd-'),
 }

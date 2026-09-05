@@ -1,3 +1,22 @@
+# 0.9.3
+
+## New features
+- Suspicious characters detection (Cyrillic lookalike, ASCII non-printable, invisible)
+- JA4H fingerprint added to attack detail (`LOG_JA4H_FINGERPRINT`, default to `false`)
+
+## Improvements
+- If cloud server not reachable at startup, agent falls back to default template configuration - wondering if it makes sense...
+- Daemonized log thread for cleaner exit
+- False-Positive in SQL injection detection engine fix
+- Implemented `Flask.g`, simplifying FlaskRASP code
+
+## Bug Fix
+- Fixed FastAPI deprecation
+- Fixed verbosity level initilialisation error
+- SQLi injection engines error when handling non string content
+- Agent would not start if cloud configuration is enabled and cloud server not reachable
+- Error in multipart file analysis on FastAPI
+
 # 0.9.2
 
 ## New features

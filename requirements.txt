@@ -8,5 +8,5 @@ setuptools>=75.5.0
 fastmcp
 importlib_resources
 loguru
-torch
-tiktoken
+torch==2.9.*
+tiktoken==0.12.0
