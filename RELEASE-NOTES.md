@@ -1,3 +1,18 @@
+# 0.9.4
+
+## New features
+- New suspicious characters class: Unicode Tags (\u0000-\u007F), set with the `CHARS_UNICODE_TAGS` parameters
+- DLP filters for cloud, repositories and AI providers API key 
+- Bot Detection, based of JA4H fingerprint
+
+## Improvements
+- `unicode_escape` codex depreciation handled with homemade function
+- Improved multipart files upload processing to prevent memory-based DoS
+
+## Bug Fix
+- Configuration update in cloud architecture was broken since 0.9.2... Bug fixed, QA team fired, again. 
+- Some documentation fixes
+
 # 0.9.3
 
 ## New features

@@ -2,7 +2,7 @@
 # VERSION
 #
 
-DATA_VERSION = '1.2.0'
+DATA_VERSION = '0.9.4'
 XSS_MODEL_VERSION = '3.1.0'
 SQLI_MODEL_VERSION = '3.1.1'
 PROMPT_MODEL_VERSION = '1.0.0'
@@ -40,7 +40,8 @@ ATTACKS = [
     'Zero-Trust',           # 13
     'Prompt Injection',     # 14
     'Upload Validation',    # 15
-    'Suspicious Characters' # 16
+    'Suspicious Characters',# 16
+    'Bot Detection'         # 17
 ]
 
 BRUTE_FORCE_ATTACKS = [ 1, 3, 5, 10 ]
@@ -63,6 +64,7 @@ ATTACK_ZTAA = 13
 ATTACK_PROMPT = 14
 ATTACK_UPLOAD = 15
 ATTACK_CHARS = 16
+ATTACK_BOTS = 17
 
 ATTACKS_CHECKS = [
     'blacklist',
@@ -81,7 +83,8 @@ ATTACKS_CHECKS = [
     'ztaa',
     'prompt',
     'upload',
-    'chars'
+    'chars',
+    'bots'
 ]
 
 ATTACKS_CODES = {
@@ -101,7 +104,8 @@ ATTACKS_CODES = {
     ATTACK_ZTAA: [ 'PCB013' ],
     ATTACK_PROMPT: ['AML.T0051.000', 'PCB014' ],
     ATTACK_UPLOAD: [ 'PCB015' ],
-    ATTACK_CHARS: [ 'T1027.018', 'PCB016']
+    ATTACK_CHARS: [ 'T1027.018', 'PCB016'],
+    ATTACK_BOTS: [ 'PCB017' ]
 }
    
 
@@ -114,7 +118,7 @@ CHARS_VECTORS = [ 'path', 'qs_values', 'json_values', 'headers_values', 'mcp_val
 DLP_PATTERNS = {
     'phone': [ r'(011|00|\+)((?:9[679]|8[035789]|6[789]|5[90]|42|3[578]|2[1-689])|9[0-58]|8[1246]|6[0-6]|5[1-8]|4[013-9]|3[0-469]|2[70]|7|1)(?:\W*\d){0,13}\d' ],
     'cc': [ r'(?:4[0-9]{12}(?:[0-9]{3})?|(?:5[1-5][0-9]{2}|222[1-9]|22[3-9][0-9]|2[3-6][0-9]{2}|27[01][0-9]|2720)[0-9]{12}|3[47][0-9]{13})' ],
-    'key': [ r'-----BEGIN ([A-Z]+ )?PRIVATE KEY( BLOCK)?-----' ],
+    'key': [ r'-----BEGIN\s(?:RSA|DSA|EC|OPENSSH|PGP|ENCRYPTED)?\s?PRIVATE KEY(?:\sBLOCK)?-----' ],
     'hash': [ r'([a-f0-9]{8}){4,5,7,8,12,16}' ], # MD5, SHA-1, SHA-224, SHA-256, SHA-384, SHA-512
     'windows': [
         r'(\$NT\$)?[a-f0-9]{32}$', # NTLM
@@ -127,8 +131,47 @@ DLP_PATTERNS = {
     'linux': [
         r'\$(1|2(a|y)?|5|6)\$[a-z0-9\/.]{0,96}\$[a-z0-9\/.]{22,128}?' , # MD5 / Blowfish / SHA-256 / SHA-512
         r'\$(y|7)\$[.\/A-Za-z0-9]+\$[.\/A-Za-z0-9]{,86}\$[.\/A-Za-z0-9]{43}', # Yescrypt
+    ],
+    'api': [
+        # aws-access-key-id  [high]
+        r'\b((?:A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16})\b',
+        # aws-secret-access-key  [medium]
+        r"""(?i)aws[_\-\.]?(?:secret|sec)[_\-\.]?(?:access)?[_\-\.]?key["']?\s*[:=]\s*["']?([A-Za-z0-9/+=]{40})""",
+        # azure-storage-connection-string  [high]
+        r'DefaultEndpointsProtocol=https?;AccountName=[A-Za-z0-9]+;AccountKey=([A-Za-z0-9+/=]{86,88})',
+        # azure-ad-client-secret  [medium]
+        r"""(?i)client[_\-]?secret["']?\s*[:=]\s*["']?([A-Za-z0-9~._\-]{34,40})\b""",
+        # gcp-api-key  [high]
+        r'\b(AIza[0-9A-Za-z_\-]{35})\b',
+        # gcp-oauth-client-id  [high]
+        r'\b([0-9]+-[a-z0-9_]{32}\.apps\.googleusercontent\.com)\b',
+        # gcp-service-account-json  [high]
+        r'"type"\s*:\s*"service_account"[\s\S]{0,400}?"private_key"\s*:\s*"-----BEGIN',
+        # github-token  [high]
+        r'\b(gh[pousr]_[A-Za-z0-9]{36})\b',
+        # github-fine-grained-pat  [high]
+        r'\b(github_pat_[A-Za-z0-9]{22}_[A-Za-z0-9]{59})\b',
+        # github-app-jwt-or-oauth-secret  [medium]
+        r"""(?i)github[_\-]?(?:client[_\-]?)?secret["']?\s*[:=]\s*["']?([a-f0-9]{40})\b""",
+        # gitlab-token  [high]
+        r'\b(gl(?:pat|dt|rt|soat|ptt|oas)-[A-Za-z0-9_\-]{20,50})\b',
+        # npm-token  [high]
+        r'\b(npm_[A-Za-z0-9]{36})\b',
+        # pypi-token  [high]
+        r'\b(pypi-AgEIcHlwaS5vcmc[A-Za-z0-9_\-]{50,})',
+        # dockerhub-pat  [high]
+        r'\b(dckr_pat_[A-Za-z0-9_\-]{27})\b',
+        # openai-key  [high]
+        r'\b(sk-(?:proj|svcacct|admin)?-?[A-Za-z0-9_\-]{20,}T3BlbkFJ[A-Za-z0-9_\-]{20,})\b',
+        # openai-key-legacy  [medium]
+        r'\b(sk-[A-Za-z0-9]{48})\b',
+        # anthropic-key  [high]
+        r'\b(sk-ant-(?:api|admin)[0-9]{2}-[A-Za-z0-9_\-]{93}AA)\b',
+        # huggingface-token  [high]
+        r'\b(hf_[A-Za-z0-9]{34,})\b',
+        # google-gemini-key  [high]
+        r'\b(AIza[0-9A-Za-z_\-]{35})\b'
     ]
-
 }
 
 B64_PATTERN = r'^(?:[A-Za-z0-9+/]{4})+(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$'
@@ -136,7 +179,8 @@ B64_PATTERN = r'^(?:[A-Za-z0-9+/]{4})+(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$
 CHARS_PATTERNS = {
     'cyrillic': r'[\u0400-\u04FF]',
     'non_printable': r'[\x00-\x08\x0b\x0c\x0e-\x1f]',
-    'invisible': r'[\u034F\u061C\u180E\u200B-\u200F\u202A-\u202E\u2061-\u206F\uFE00-\uFE0F\uFEFF]'
+    'invisible': r'[\u034F\u061C\u180E\u200B-\u200F\u202A-\u202E\u2061-\u206F\uFE00-\uFE0F\uFEFF]',
+    'unicode_tags': r'[\u0000-\u007F]'
 }
 
 #
@@ -160,7 +204,8 @@ DEFAULT_SECURITY_CHECKS = {
     'ztaa': 0,
     'prompt': 0,
     'upload': 0,
-    'chars': 0
+    'chars': 0,
+    'bots': 0
 }
 
 DEFAULT_CONFIG = {
@@ -223,6 +268,7 @@ DEFAULT_CONFIG = {
     'DLP_HASHES': False,
     'DLP_WINDOWS_CREDS': False,
     'DLP_LINUX_CREDS': False,
+    'DLP_API': False,
     'DLP_LOG_LEAKED_DATA': False,
 
     'UPLOAD_FILES': True,
@@ -253,7 +299,8 @@ DEFAULT_CONFIG = {
 
     'CHARS_CYRILLIC': False,
     'CHARS_INVISIBLE': False,
-    'CHARS_NONPRINTABLE': False
+    'CHARS_NONPRINTABLE': False,
+    'CHARS_UNICODE_TAGS': False
 }
 
 #
@@ -280,7 +327,8 @@ CONFIG_TEMPLATES = {
             'ztaa': 0,
             'prompt': 0,
             'upload': 2,
-            'chars': 2
+            'chars': 2,
+            'bots': 2
         },
         'DECOY_ROUTES' : [ 
             [ '/admin', 'ends' ],
@@ -304,6 +352,7 @@ CONFIG_TEMPLATES = {
         'DLP_HASHES': True,
         'DLP_WINDOWS_CREDS': True,
         'DLP_LINUX_CREDS': True,
+        'DLP_API': True,
         'DLP_LOG_LEAKED_DATA': True,
         'UPLOAD_FILES': False,
         'FLOOD_DELAY' : 60,
@@ -313,6 +362,7 @@ CONFIG_TEMPLATES = {
         'CHARS_CYRILLIC': True,
         'CHARS_INVISIBLE': True,
         'CHARS_NONPRINTABLE': True,
+        'CHARS_UNICODE_TAGS': True,
         'LOG_JA4H_FINGERPRINT': True,
         'VERBOSE': 100
     },
@@ -334,7 +384,8 @@ CONFIG_TEMPLATES = {
             'ztaa': 0,
             'prompt': 0,
             'upload': 3,
-            'chars': 3
+            'chars': 3,
+            'bots': 3
         },
         'DLP_PHONE_NUMBERS': True,
         'DLP_CC_NUMBERS': True,
@@ -342,10 +393,12 @@ CONFIG_TEMPLATES = {
         'DLP_HASHES': True,
         'DLP_WINDOWS_CREDS': True,
         'DLP_LINUX_CREDS': True,
+        'DLP_API': True,
         'DLP_LOG_LEAKED_DATA': True,
         'CHARS_CYRILLIC': True,
         'CHARS_INVISIBLE': True,
         'CHARS_NONPRINTABLE': False,
+        'CHARS_UNICODE_TAGS': True,
         'VERBOSE': 10
     },
     'llm': {
@@ -367,10 +420,12 @@ CONFIG_TEMPLATES = {
             'ztaa': 0,
             'prompt': 2,
             'upload': 1,
-            'chars': 2
+            'chars': 2,
+            'bots': 1
         },
         'CHARS_CYRILLIC': True,
         'CHARS_INVISIBLE': True,
+        'CHARS_UNICODE_TAGS': True
     },
     'mcp': {
         'APP_NAME' : 'MCP Server',
@@ -391,7 +446,8 @@ CONFIG_TEMPLATES = {
             'ztaa': 0,
             'prompt': 0,
             'upload': 2,
-            'chars': 1
+            'chars': 1,
+            'bots': 1
         },
         'DLP_PHONE_NUMBERS': True,
         'DLP_CC_NUMBERS': True,
@@ -399,9 +455,11 @@ CONFIG_TEMPLATES = {
         'DLP_HASHES': True,
         'DLP_WINDOWS_CREDS': True,
         'DLP_LINUX_CREDS': True,
+        'DLP_API': True,
         'DLP_LOG_LEAKED_DATA': True,
         'CHARS_CYRILLIC': True,
         'CHARS_INVISIBLE': True,
+        'CHARS_UNICODE_TAGS': True,
         'VERBOSE': 100
     }
 }
@@ -482,3 +540,36 @@ JA4H_AZURE_PLATFORM_HEADERS = {
     ),
     'prefixes': ('x-ms-', 'x-azure-', 'x-fd-'),
 }
+
+#
+# UNESCAPE
+#
+
+ESCAPE_SIMPLE = {'n': '\n', 't': '\t', 'r': '\r', 'b': '\b',
+           'f': '\f', 'v': '\v', '0': '\0',
+           '\\': '\\', "'": "'", '"': '"'}
+
+ESCAPE_CODE = r'\\(u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|.)'
+
+#
+# BOT DETECTION
+#
+
+BOTS_JA4H_PATTERNS = [
+    # 1. No cookie, no referer, no Accept-Language, <=8 headers: curl/wget/requests shape
+    r'^[a-z]{2}\d{2}nn0[0-8]0000_',
+    # 2. Minimal header set (<=4 headers) regardless of anything else
+    r'^[a-z]{2}\d{2}[cn][rn]0[0-4]',
+    # 3. HTTP/2 or /3 with a thin header set - real browsers never do this over h2
+    r'^[a-z]{2}(?:20|30)[cn][rn]0[0-6]',
+    # 4. HTTP/1.0 client
+    r'^[a-z]{2}10',
+    # 5. POST with neither cookie nor referer (credential stuffing, form abuse)
+    # r'^po\d{2}nn',
+    # 6. Cookie header present but both cookie hashes null
+    r'^[a-z]{2}\d{2}c[rn]\d{2}[a-z0-9]{4}_[0-9a-f]{12}_0{12}_0{12}$',
+    # 7. No cookie flag but a non-null cookie hash
+    r'^[a-z]{2}\d{2}n[rn]\d{2}[a-z0-9]{4}_[0-9a-f]{12}_(?!0{12})[0-9a-f]{12}',
+    # 8. Absurd header count (>=20), typical of proxy chains and some scrapers
+    r'^[a-z]{2}\d{2}[cn][rn][2-9]\d'
+]

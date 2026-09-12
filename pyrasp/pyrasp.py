@@ -1,4 +1,4 @@
-VERSION = '0.9.3'
+VERSION = '0.9.4'
 
 from pprint import pprint
 import time
@@ -23,6 +23,7 @@ import torch
 import tiktoken
 from pathlib import Path
 import hashlib
+from urllib.parse import parse_qs
 
 # Flask
 try:
@@ -84,25 +85,29 @@ if all([
 
 # DATA GLOBALS
 try:
-    from pyrasp.pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION, PROMPT_MODEL_VERSION
-    from pyrasp.pyrasp_data import CLOUD_FUNCTIONS
-    from pyrasp.pyrasp_data import DEFAULT_CONFIG, DEFAULT_SECURITY_CHECKS, CONFIG_TEMPLATES
-    from pyrasp.pyrasp_data import ATTACKS, ATTACKS_CHECKS, ATTACKS_CODES, BRUTE_FORCE_ATTACKS
-    from pyrasp.pyrasp_data import SQL_INJECTIONS_VECTORS, XSS_VECTORS, COMMAND_INJECTIONS_VECTORS, PROMPT_INJECTIONS_VECTORS, CHARS_VECTORS
-    from pyrasp.pyrasp_data import DLP_PATTERNS, PATTERN_CHECK_FUNCTIONS, B64_PATTERN, CHARS_PATTERNS
-    from pyrasp.pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE, ATTACK_ZTAA, ATTACK_PROMPT, ATTACK_UPLOAD, ATTACK_CHARS
-    from pyrasp.pyrasp_data import PROMPT_GPT_CONFIG
-    from pyrasp.pyrasp_data import JA4H_EMPTY_HASH, JA4H_EXCLUDED, JA4H_METHOD_CODES, JA4H_VERSION_CODES
-except:
     from .pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION, PROMPT_MODEL_VERSION
     from .pyrasp_data import CLOUD_FUNCTIONS
     from .pyrasp_data import DEFAULT_CONFIG, DEFAULT_SECURITY_CHECKS, CONFIG_TEMPLATES
     from .pyrasp_data import ATTACKS, ATTACKS_CHECKS, ATTACKS_CODES, BRUTE_FORCE_ATTACKS
     from .pyrasp_data import SQL_INJECTIONS_VECTORS, XSS_VECTORS, COMMAND_INJECTIONS_VECTORS, PROMPT_INJECTIONS_VECTORS, CHARS_VECTORS
     from .pyrasp_data import DLP_PATTERNS, PATTERN_CHECK_FUNCTIONS, B64_PATTERN, CHARS_PATTERNS
-    from .pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE, ATTACK_ZTAA, ATTACK_PROMPT, ATTACK_UPLOAD, ATTACK_CHARS
+    from .pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE, ATTACK_ZTAA, ATTACK_PROMPT, ATTACK_UPLOAD, ATTACK_CHARS, ATTACK_BOTS
     from .pyrasp_data import PROMPT_GPT_CONFIG
     from .pyrasp_data import JA4H_EMPTY_HASH, JA4H_EXCLUDED, JA4H_METHOD_CODES, JA4H_VERSION_CODES, JA4H_AZURE_PLATFORM_HEADERS
+    from .pyrasp_data import ESCAPE_SIMPLE, ESCAPE_CODE
+    from .pyrasp_data import BOTS_JA4H_PATTERNS
+except:
+    from pyrasp.pyrasp_data import DATA_VERSION, XSS_MODEL_VERSION, SQLI_MODEL_VERSION, PROMPT_MODEL_VERSION
+    from pyrasp.pyrasp_data import CLOUD_FUNCTIONS
+    from pyrasp.pyrasp_data import DEFAULT_CONFIG, DEFAULT_SECURITY_CHECKS, CONFIG_TEMPLATES
+    from pyrasp.pyrasp_data import ATTACKS, ATTACKS_CHECKS, ATTACKS_CODES, BRUTE_FORCE_ATTACKS
+    from pyrasp.pyrasp_data import SQL_INJECTIONS_VECTORS, XSS_VECTORS, COMMAND_INJECTIONS_VECTORS, PROMPT_INJECTIONS_VECTORS, CHARS_VECTORS
+    from pyrasp.pyrasp_data import DLP_PATTERNS, PATTERN_CHECK_FUNCTIONS, B64_PATTERN, CHARS_PATTERNS
+    from pyrasp.pyrasp_data import ATTACK_BLACKLIST, ATTACK_CMD, ATTACK_DECOY, ATTACK_FLOOD, ATTACK_FORMAT, ATTACK_HEADER, ATTACK_HPP, ATTACK_PATH, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_XSS, ATTACK_DLP, ATTACK_BRUTE, ATTACK_ZTAA, ATTACK_PROMPT, ATTACK_UPLOAD, ATTACK_CHARS, ATTACK_BOTS
+    from pyrasp.pyrasp_data import PROMPT_GPT_CONFIG
+    from pyrasp.pyrasp_data import JA4H_EMPTY_HASH, JA4H_EXCLUDED, JA4H_METHOD_CODES, JA4H_VERSION_CODES
+    from pyrasp.pyrasp_data import ESCAPE_SIMPLE, ESCAPE_CODE
+    from pyrasp.pyrasp_data import BOTS_JA4H_PATTERNS
 
 # IP
 IP_COUNTRY = {}
@@ -256,6 +261,10 @@ class PyRASP():
     # GLOBAL VARIABLES
     ####################################################
 
+    # Template & Configuration
+    TEMPLATE = 'default'
+    CONFIG = {}
+
     # ROUTES
     ROUTES = []
 
@@ -329,6 +338,7 @@ class PyRASP():
         #
 
         self.__set_config(template, conf, params, key, cloud_url)
+        self.__apply_config()
 
         #
         # Security
@@ -610,13 +620,19 @@ class PyRASP():
 
         # Set configuration
         if not error and server_data.get('config'):
+            new_config = server_data.get('config')
             self.print_screen('[PyRASP] Loading new configuration')
-            new_config = { 'config': server_data['config'] }
-            config_changes = self.check_config_change(server_data['config'])
-            self.load_config(new_config)
+            config_changes = self.check_config_change(new_config)
+            template = server_data.get('template', None)
+            self.__update_config(template, new_config)
+            self.__apply_config()
 
         # Restart services
-        if not error and not self.PLATFORM in CLOUD_FUNCTIONS:
+        if all([
+            not error,
+            not self.PLATFORM in CLOUD_FUNCTIONS,
+            server_data.get('config')
+        ]):
             if config_changes['logs']:
                 self.start_logging(restart = True) 
             if config_changes['beacon']:
@@ -695,6 +711,8 @@ class PyRASP():
         if not template in CONFIG_TEMPLATES:
             template = 'default'
 
+        self.TEMPLATE = template
+
         self.print_screen(f'[+] Loading template configuration: {template}', init=True, new_line_up = False)
 
         # Set template
@@ -720,15 +738,46 @@ class PyRASP():
         config.update(remote_config)
         config.update(params_config)
 
-        # Set API
-        self.API_CONFIG = config
+        # Set config
+        self.CONFIG = config
 
         # Set Blacklist
         self.BLACKLIST = remote_blacklist
 
+    def __apply_config(self):
+
         # Set config
-        for config_key in config:
-            setattr(self, config_key, config[config_key])
+        try:
+            for config_key, config_value in self.CONFIG.items():
+                setattr(self, config_key, config_value)
+        except:
+            pass
+        else:
+            self.API_CONFIG = self.CONFIG
+
+    def __update_config(self, template, new_config):
+
+        """
+        template = None => no template change
+        template != None => start from new template
+        """
+
+        if not template in CONFIG_TEMPLATES:
+            template = 'default'
+
+        if template != self.TEMPLATE:
+            current_config = DEFAULT_CONFIG.copy()
+            current_config.update(CONFIG_TEMPLATES[template]) 
+            self.TEMPLATE = template
+            self.print_screen(f'[+] Loading template configuration: {template}', init=True, new_line_up = False)
+        else:
+            current_config = self.CONFIG
+
+        config = current_config.copy()
+        config.update(new_config)
+
+        self.CONFIG = config
+
 
     def __get_cloud_config(self, cloud_url, key):
 
@@ -886,7 +935,7 @@ class PyRASP():
     ####################################################
 
     # Inbound attacks
-    def check_inbound_attacks(self, host, request_method, request_path, source_ip, timestamp, request, inject_vectors = None):
+    def check_inbound_attacks(self, host, request_method, request_path, source_ip, timestamp, request, ja4h_fingerprint, inject_vectors = None):
 
         (attack_location, attack_payload) = (None, None)
 
@@ -910,6 +959,11 @@ class PyRASP():
             if not self.BLACKLIST_OVERRIDE:
                 attack = self.check_blacklist(source_ip, timestamp)
             
+            # Check if client is a bot
+            if attack == None:
+                if self.SECURITY_CHECKS.get('bots'):
+                    attack = self.check_bots(ja4h_fingerprint)
+
             # Check Zero-Trust
             if attack == None:
                 if self.SECURITY_CHECKS.get('ztaa'):
@@ -1049,6 +1103,22 @@ class PyRASP():
     ####################################################
     # SECURITY FUNCTIONS
     ####################################################
+
+    # Check Bots
+    def check_bots(self, ja4h_fingerprint = None):
+
+        attack = None
+
+        if ja4h_fingerprint is not None and any([ re.match(regexp, ja4h_fingerprint, re.IGNORECASE) for regexp in BOTS_JA4H_PATTERNS]):
+            attack = {
+                'type': ATTACK_BOTS,
+                'details': {
+                    'location': 'ja4h_fingerprint',
+                    'payload': ja4h_fingerprint
+                }
+            } 
+
+        return attack
 
     # Check Zero-Trust
     def check_ztaa(self, request):
@@ -1451,6 +1521,10 @@ class PyRASP():
             payload = self.check_dlp_patterns('linux', content)
             payload_type = 'Linux Credentials'
 
+        if payload == None and self.DLP_API:
+            payload = self.check_dlp_patterns('api', content)
+            payload_type = 'API Key'
+
         if payload:
             if not self.DLP_LOG_LEAKED_DATA:
                 payload = payload_type
@@ -1546,7 +1620,7 @@ class PyRASP():
 
         else:
 
-            for filename, content in files:
+            for filename, file_size in files:
 
 
                 # Check filename
@@ -1566,14 +1640,13 @@ class PyRASP():
                     break
 
                 # Check length
-                file_size = len(content)
 
                 if file_size > self.UPLOAD_MAX_SIZE * 1000000:
                     attack = {
                         'type': ATTACK_UPLOAD,
                         'details': {
                             'location': 'size',
-                            'payload': len(content)
+                            'payload': file_size
                         }
                     }
 
@@ -1623,6 +1696,12 @@ class PyRASP():
 
                 if self.CHARS_INVISIBLE:
                     match = re.search(CHARS_PATTERNS['invisible'], injection)
+                    if not match is None:
+                        suspicious_characters = True
+                        break
+
+                if self.CHARS_UNICODE_TAGS:
+                    match = re.search(CHARS_PATTERNS['unicode_tags'], injection)
                     if not match is None:
                         suspicious_characters = True
                         break
@@ -1897,7 +1976,7 @@ class PyRASP():
     # JA4H FINGERPRINTING
     ####################################################
 
-    def ja4h_fingerprint(self, request):
+    def calculate_ja4h_fingerprint(self, request):
 
         (http_method, http_version, headers) = self.get_ja4h_params(request)
 
@@ -1992,7 +2071,6 @@ class PyRASP():
             return JA4H_EMPTY_HASH
 
         return hashlib.sha256(joined.encode('utf-8')).hexdigest()[:12]
- 
  
     def _ja4h_method_code(self, method):
         
@@ -2190,7 +2268,8 @@ class PyRASP():
 
         if decode:
             try:
-                decoded = value.encode().decode('unicode_escape')
+                #decoded = value.encode().decode('unicode_escape')
+                decoded = self._unescape(value)
             except:
                 pass
             else:
@@ -2205,7 +2284,20 @@ class PyRASP():
                     decoded_variables.extend(decoded_values)
         
         return decoded_variables
-            
+
+    # Unuescape
+    def _unescape(self, value):
+    
+        def repl(m):
+            seq = m.group(1)
+            if len(seq) > 1:
+                return chr(int(seq[1:], 16))
+            return ESCAPE_SIMPLE.get(seq, '\\' + seq)
+
+        escape_re = re.compile(ESCAPE_SIMPLE, re.DOTALL)
+        
+        return escape_re.sub(repl, value)
+
     # Pattern checking
     def check_pattern(self, text, pattern, match_type):
 
@@ -2358,10 +2450,14 @@ class FlaskRASP(PyRASP):
 
             (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
 
-            if self.LOG_JA4H_FINGERPRINT:
-                setattr(g, 'ja4h_fingerprint', self.ja4h_fingerprint(request))
+            if self.LOG_JA4H_FINGERPRINT or self.SECURITY_CHECKS.get('bots'):
+                ja4h_fingerprint = self.calculate_ja4h_fingerprint(request)
+            else :
+                ja4h_fingerprint = None
+
+            setattr(g, 'ja4h_fingerprint', ja4h_fingerprint)
             
-            attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request)
+            attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request, ja4h_fingerprint)
 
             # Send attack status in status code for handling by @after_request
             if not attack == None:
@@ -2558,7 +2654,7 @@ class FlaskRASP(PyRASP):
 
         for filename in request.files:
             content = request.files[filename].read()
-            files_list.append([ filename, content ])
+            files_list.append([ filename, len(content) ])
 
         return files_list
 
@@ -2616,10 +2712,10 @@ class FastApiRASP(PyRASP):
             vectors = self.remove_exceptions(vectors) 
 
             # Ja4h fingerprint
-            ja4h_fingerprint = self.ja4h_fingerprint(request) if self.LOG_JA4H_FINGERPRINT else None
+            ja4h_fingerprint = self.calculate_ja4h_fingerprint(request) if (self.LOG_JA4H_FINGERPRINT or self.SECURITY_CHECKS.get('bots')) else None
             
             # Check inboud attacks
-            inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request, vectors)
+            inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request, ja4h_fingerprint, vectors)
               
             # Send response
             if inbound_attack:
@@ -2940,10 +3036,10 @@ class DjangoRASP(PyRASP):
         (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
 
         # Ja4h fingerprint
-        ja4h_fingerprint = self.ja4h_fingerprint(request) if self.LOG_JA4H_FINGERPRINT else None
+        ja4h_fingerprint = self.calculate_ja4h_fingerprint(request) if self.LOG_JA4H_FINGERPRINT or self.SECURITY_CHECKS.get('bots') else None
 
         # Check inboud attacks
-        inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request)
+        inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request, ja4h_fingerprint)
 
         if inbound_attack:
             security_check = ATTACKS_CHECKS[inbound_attack['type']]
@@ -3122,7 +3218,7 @@ class DjangoRASP(PyRASP):
 
         for filename in request.FILES:
             content = request.FILES[filename].read()
-            files_list.append([ filename, content ])
+            files_list.append([ filename, len(content) ])
 
         return files_list
 
@@ -3423,7 +3519,7 @@ class GcpRASP(FlaskRASP):
             (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
 
             # Ja4h fingerprint
-            ja4h_fingerprint = self.ja4h_fingerprint(request) if self.LOG_JA4H_FINGERPRINT else None
+            ja4h_fingerprint = self.calculate_ja4h_fingerprint(request) if self.LOG_JA4H_FINGERPRINT or self.SECURITY_CHECKS.get('bots') else None
 
             # Analyze request
             inbound_attack = None
@@ -3433,7 +3529,7 @@ class GcpRASP(FlaskRASP):
             status_code = 200
             response = None
 
-            inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request)
+            inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request, ja4h_fingerprint)
 
             if inbound_attack:
                 security_check = ATTACKS_CHECKS[inbound_attack['type']]
@@ -3595,7 +3691,7 @@ class AzureRASP(PyRASP):
             (host, request_method, request_path, source_ip, timestamp) = self.get_params(request)
 
             # Ja4h fingerprint
-            ja4h_fingerprint = self.ja4h_fingerprint(request) if self.LOG_JA4H_FINGERPRINT else None
+            ja4h_fingerprint = self.calculate_ja4h_fingerprint(request) if self.LOG_JA4H_FINGERPRINT or self.SECURITY_CHECKS.get('bots') else None
 
             # Analyze request
             inbound_attack = None
@@ -3605,7 +3701,7 @@ class AzureRASP(PyRASP):
             status_code = 200
             response = func.HttpResponse()
 
-            inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request)
+            inbound_attack = self.check_inbound_attacks(host, request_method, request_path, source_ip, timestamp, request, ja4h_fingerprint)
 
             if inbound_attack:
                 security_check = ATTACKS_CHECKS[inbound_attack['type']]
@@ -3994,7 +4090,7 @@ class McpToolRASP(PyRASP):
             
             # Ja4h fingerprint
             request = get_http_request()
-            ja4h_fingerprint = self.ja4h_fingerprint(request) if self.LOG_JA4H_FINGERPRINT else None
+            ja4h_fingerprint = self.calculate_ja4h_fingerprint(request) if self.LOG_JA4H_FINGERPRINT or self.SECURITY_CHECKS.get('bots') else None
 
             # Check inboud attacks
             inbound_attack = self.check_inbound_attacks(inbound_vectors)
