@@ -2,7 +2,7 @@
 # VERSION
 #
 
-DATA_VERSION = '0.9.4'
+DATA_VERSION = '0.10.0'
 XSS_MODEL_VERSION = '3.1.0'
 SQLI_MODEL_VERSION = '3.1.1'
 PROMPT_MODEL_VERSION = '1.0.0'
@@ -109,17 +109,17 @@ ATTACKS_CODES = {
 }
    
 
-SQL_INJECTIONS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_values', 'headers_values', 'mcp_values' ]
-XSS_VECTORS = [ 'path', 'cookies', 'qs_values', 'post_values', 'json_values', 'headers_values', 'mcp_values' ]
-COMMAND_INJECTIONS_VECTORS = [ 'qs_values', 'post_values', 'json_values', 'mcp_values' ]
+SQL_INJECTIONS_VECTORS = [ 'path', 'cookies', 'qs_variables', 'post_variables', 'qs_values', 'post_values', 'json_keys', 'json_values', 'headers_values', 'user_agent', 'referer', 'mcp_values' ]
+XSS_VECTORS = [ 'path', 'cookies', 'qs_variables', 'post_variables', 'qs_values', 'post_values', 'json_keys', 'json_values', 'headers_values', 'user_agent', 'referer', 'mcp_values' ]
+COMMAND_INJECTIONS_VECTORS = [ 'qs_variables', 'post_variables', 'qs_values', 'post_values', 'json_keys', 'json_values', 'mcp_values' ]
 PROMPT_INJECTIONS_VECTORS = [ 'qs_values', 'post_values', 'json_values', 'mcp_values' ]
-CHARS_VECTORS = [ 'path', 'qs_values', 'json_values', 'headers_values', 'mcp_values' ]
+CHARS_VECTORS = [ 'path', 'cookies', 'qs_variables', 'post_variables', 'qs_values', 'post_values', 'json_keys', 'json_values', 'headers_values', 'user_agent', 'referer', 'mcp_values' ]
 
 DLP_PATTERNS = {
     'phone': [ r'(011|00|\+)((?:9[679]|8[035789]|6[789]|5[90]|42|3[578]|2[1-689])|9[0-58]|8[1246]|6[0-6]|5[1-8]|4[013-9]|3[0-469]|2[70]|7|1)(?:\W*\d){0,13}\d' ],
     'cc': [ r'(?:4[0-9]{12}(?:[0-9]{3})?|(?:5[1-5][0-9]{2}|222[1-9]|22[3-9][0-9]|2[3-6][0-9]{2}|27[01][0-9]|2720)[0-9]{12}|3[47][0-9]{13})' ],
     'key': [ r'-----BEGIN\s(?:RSA|DSA|EC|OPENSSH|PGP|ENCRYPTED)?\s?PRIVATE KEY(?:\sBLOCK)?-----' ],
-    'hash': [ r'([a-f0-9]{8}){4,5,7,8,12,16}' ], # MD5, SHA-1, SHA-224, SHA-256, SHA-384, SHA-512
+    'hash': [ r'(?:[a-f0-9]{128}|[a-f0-9]{96}|[a-f0-9]{64}|[a-f0-9]{56}|[a-f0-9]{40}|[a-f0-9]{32})' ], # MD5, SHA-1, SHA-224, SHA-256, SHA-384, SHA-512
     'windows': [
         r'(\$NT\$)?[a-f0-9]{32}$', # NTLM
         r'([^\\\/:*?\"<>|]{1,20}:)?[a-f0-9]{32}(:[^\\\/:*?\"<>|]{1,20})?', # Domain Cached
@@ -179,8 +179,7 @@ B64_PATTERN = r'^(?:[A-Za-z0-9+/]{4})+(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$
 CHARS_PATTERNS = {
     'cyrillic': r'[\u0400-\u04FF]',
     'non_printable': r'[\x00-\x08\x0b\x0c\x0e-\x1f]',
-    'invisible': r'[\u034F\u061C\u180E\u200B-\u200F\u202A-\u202E\u2061-\u206F\uFE00-\uFE0F\uFEFF]',
-    'unicode_tags': r'[\u0000-\u007F]'
+    'invisible': r'[\u034F\u061C\u115F\u1160\u17B4\u17B5\u180E\u200B-\u200F\u202A-\u202E\u2060-\u206F\u2800\u3164\uFE00-\uFE0F\uFEFF\uFFA0]' 
 }
 
 #
@@ -253,7 +252,7 @@ DEFAULT_CONFIG = {
         [ '/autodiscover', 'starts' ],
         [ '/Autodiscover', 'starts' ],
         [ '/.git/', 'starts' ],                
-        [ '/.aws/ ', 'starts' ],
+        [ '/.aws/', 'starts' ],
         [ '.php', 'ends' ]
     ],
 
@@ -299,8 +298,7 @@ DEFAULT_CONFIG = {
 
     'CHARS_CYRILLIC': False,
     'CHARS_INVISIBLE': False,
-    'CHARS_NONPRINTABLE': False,
-    'CHARS_UNICODE_TAGS': False
+    'CHARS_NONPRINTABLE': False
 }
 
 #
@@ -342,7 +340,7 @@ CONFIG_TEMPLATES = {
             [ '/autodiscover', 'starts' ],
             [ '/Autodiscover', 'starts' ],
             [ '/.git/', 'starts' ],                
-            [ '/.aws/ ', 'starts' ],
+            [ '/.aws/', 'starts' ],
             [ '.php', 'ends' ],
             [ 'wp-', 'contains' ]
         ],
@@ -362,7 +360,6 @@ CONFIG_TEMPLATES = {
         'CHARS_CYRILLIC': True,
         'CHARS_INVISIBLE': True,
         'CHARS_NONPRINTABLE': True,
-        'CHARS_UNICODE_TAGS': True,
         'LOG_JA4H_FINGERPRINT': True,
         'VERBOSE': 100
     },
@@ -398,8 +395,7 @@ CONFIG_TEMPLATES = {
         'CHARS_CYRILLIC': True,
         'CHARS_INVISIBLE': True,
         'CHARS_NONPRINTABLE': False,
-        'CHARS_UNICODE_TAGS': True,
-        'VERBOSE': 10
+        'VERBOSE': 100
     },
     'llm': {
         'APP_NAME' : 'LLM Frontend',
@@ -423,9 +419,16 @@ CONFIG_TEMPLATES = {
             'chars': 2,
             'bots': 1
         },
+        'DLP_PHONE_NUMBERS': True,
+        'DLP_CC_NUMBERS': True,
+        'DLP_PRIVATE_KEYS': True,
+        'DLP_HASHES': True,
+        'DLP_WINDOWS_CREDS': True,
+        'DLP_LINUX_CREDS': True,
+        'DLP_API': True,
+        'DLP_LOG_LEAKED_DATA': True,
         'CHARS_CYRILLIC': True,
-        'CHARS_INVISIBLE': True,
-        'CHARS_UNICODE_TAGS': True
+        'CHARS_INVISIBLE': True
     },
     'mcp': {
         'APP_NAME' : 'MCP Server',
@@ -459,7 +462,6 @@ CONFIG_TEMPLATES = {
         'DLP_LOG_LEAKED_DATA': True,
         'CHARS_CYRILLIC': True,
         'CHARS_INVISIBLE': True,
-        'CHARS_UNICODE_TAGS': True,
         'VERBOSE': 100
     }
 }

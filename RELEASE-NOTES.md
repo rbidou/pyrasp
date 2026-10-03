@@ -1,3 +1,67 @@
+# 0.10.0
+
+## READ THE DOC !!!
+- Moved to a modular architecture, 1 class per python module
+- Import must be refactored in the code (ex: `from pyrasp.pyrasp import FlaskRASP` -> `from pyrasp.flaskrasp import FlaskRASP` )
+- Kept backward compatibility as people usually don't read the doc...
+
+## New features
+- Support for aiohttp framework
+- Support for generic WSGI gateway covering Bottle, Pyramid, CherryPy, web2py, and Falcon-WSGI frameworks
+- Support for generic ASGI gateway covering Litestar, BlackSheep, Quart, Sanic-ASGI, Connexion, mounted MCP transports, Gradio/Chainlit frameworks
+
+## Improvements
+
+### Documentation
+- New documentation, with global workflow, security modules details, use cases, etc.
+
+### Detection
+- Added detection for query string and posted body variables names
+- Added detection for JSON keys
+- Improved detection for vectors containing JSON 
+- DLP engine now processes full streamed responses
+- Improved flood detection accuracy 
+- Added additional invisible characters: hangul fillers, braille blank and Khmer vowels
+- Detection for suspicious invisible and cyrillic characters in cookies and headers
+- Added XSS and suspicious characters detection to MCP Tools agent
+- Added XSS, SQL injections and suspicious characters detection to User-Agent and Referer headers
+
+### UI
+- Startup display PyRASP platform (ex: `[+] Starting PyRASP: WSGI`)
+
+### Core
+- Modular architecture for faster startup and easier maintenance
+- Each agent now imports only its own framework, so PyRASP no longer tries to load Flask, FastAPI, Django, Azure and FastMCP at startup.
+- `torch`, `tiktoken` and the GPT model are now loaded only when prompt injection detection is enabled, which cuts startup time and serverless cold starts.
+- Removed unused imports and data constants
+- Simplified the threading imports, dropping the platform-dependent conditional import and the redundant local import in the constructor.
+- `GcpRASP` now inherits `build_block_response` and `build_redirect_response` from `FlaskRASP` instead of duplicating them.
+- Backward compatibility: `from pyrasp.pyrasp import FlaskRASP` (and the other agents) still works through lazy loading.
+- Configurations generation and updates through beacons improved, read the Chapter 3. of the doc
+
+### Agents
+- Asynchronous mode support for MCP agent
+- Cloud agent beacon mechanism code factoring
+- Azure agent now supports file upload validation
+
+## Bug fix
+- Fixed multiple JA4H fingerprint issues in Azure agent
+- `PYRASP_CONF` environment variable was never used...
+- Cloud configuration didn't use specified template.
+- `LOG_PATH` was not applied to webhook, always logging to `/logs`
+- The UDP and TCP code paths were swapped in syslog transport
+- Removed `CHARS_UNICODE_TAGS` check, generating a 100% false-positive score
+- Fixed unicode decoding in specific cases
+- Fixed FastAPI and Django `X-Forwarded-For` header collection for source IP
+- Fixed hash DLP regular expression
+- Fixed TCP syslog: the socket was closed after the first log, and a str was sent instead of bytes
+- DLP label for hash leaks was `Private Key` fixed to `Password Hash` 
+- API `get_status()` always returned `Default`
+- Django module JSON parsing fix
+- Fixed exceptions mechanism that would trigger detection in some specific cases
+- Fixed HPP detection in Azure functions
+- Header whitelisting in FastAPI agent just didn't work. 
+
 # 0.9.4
 
 ## New features
