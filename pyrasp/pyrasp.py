@@ -1,4 +1,4 @@
-VERSION = '0.10.0'
+VERSION = '0.10.1'
 
 import base64
 import codecs
@@ -36,7 +36,7 @@ try:
         ATTACK_BLACKLIST, ATTACK_BOTS, ATTACK_BRUTE, ATTACK_CHARS, ATTACK_CMD, ATTACK_DECOY, ATTACK_DLP,
         ATTACK_FLOOD, ATTACK_HEADER, ATTACK_HPP, ATTACK_PROMPT, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_UPLOAD,
         ATTACK_XSS, ATTACK_ZTAA,
-        PROMPT_GPT_CONFIG,
+        PROMPT_GPT_CONFIG, PROMPT_LEGACY_TOKENIZER, PROMPT_MODEL_ARCH, PROMPT_MODEL_FORMATS,
         JA4H_EMPTY_HASH, JA4H_METHOD_CODES, JA4H_VERSION_CODES,
         ESCAPE_SIMPLE, ESCAPE_CODE,
         BOTS_JA4H_PATTERNS,
@@ -52,7 +52,7 @@ except ImportError:
         ATTACK_BLACKLIST, ATTACK_BOTS, ATTACK_BRUTE, ATTACK_CHARS, ATTACK_CMD, ATTACK_DECOY, ATTACK_DLP,
         ATTACK_FLOOD, ATTACK_HEADER, ATTACK_HPP, ATTACK_PROMPT, ATTACK_SPOOF, ATTACK_SQLI, ATTACK_UPLOAD,
         ATTACK_XSS, ATTACK_ZTAA,
-        PROMPT_GPT_CONFIG,
+        PROMPT_GPT_CONFIG, PROMPT_LEGACY_TOKENIZER, PROMPT_MODEL_ARCH, PROMPT_MODEL_FORMATS,
         JA4H_EMPTY_HASH, JA4H_METHOD_CODES, JA4H_VERSION_CODES,
         ESCAPE_SIMPLE, ESCAPE_CODE,
         BOTS_JA4H_PATTERNS,
@@ -616,9 +616,6 @@ class PyRASP():
             except ImportError:
                 from pyrasp.pyrasp_gpt import GPTModel
 
-            # Init model
-            self.prompt_model = GPTModel(PROMPT_GPT_CONFIG)
-
             prompt_model_file = 'prompt_model-'+PROMPT_MODEL_VERSION
 
             prompt_model_filenames = [
@@ -626,28 +623,49 @@ class PyRASP():
                 importlib_resources.files('pyrasp') / 'data' / prompt_model_file
             ]
 
+            load_errors = []
+
             for prompt_model_filename in prompt_model_filenames:
                 try:
-                    self.prompt_model.load_state_dict(torch.load(prompt_model_filename, map_location=torch.device('cpu'), weights_only=True))
+                    checkpoint = torch.load(prompt_model_filename, map_location=torch.device('cpu'), weights_only=True)
+                    (config, tokenizer_name, state_dict) = self.read_prompt_checkpoint(checkpoint)
+                    prompt_model = GPTModel(config)
+                    prompt_model.load_state_dict(state_dict)
+                    tokenizer = tiktoken.get_encoding(tokenizer_name)
                 except Exception as e:
-                    pass
+                    load_errors.append(f'{prompt_model_filename}: {e}')
                 else:
+                    # Set model in eval mode
+                    prompt_model.eval()
+                    self.prompt_model = prompt_model
+                    self.prompt_tokenizer = tokenizer
+                    self.prompt_pad_id = config['pad_id']
                     self.PROMPT_MODEL_LOADED = True
                     break
 
-            if self.PROMPT_MODEL_LOADED:
-
-                # Set model in eval mode
-                self.prompt_model.eval()
-
-                # Setup Tokenizer
-                self.gpt2_tokenizer = tiktoken.get_encoding('gpt2')
-
-
             if not self.PROMPT_MODEL_LOADED:
                 self.print_screen('[!] Prompt Injection model not loaded', init=False, new_line_up = False)
+                for load_error in load_errors:
+                    self.print_screen(f'    {load_error}', init=False, new_line_up = False)
             else:
                 self.print_screen('[+] Prompt Injection model loaded', init=True, new_line_up = False)
+
+    # Prompt model checkpoint -> (GPT configuration, tokenizer name, state_dict)
+    def read_prompt_checkpoint(self, checkpoint):
+
+        # Legacy file: bare state_dict, architecture given by the fixed PROMPT_GPT_CONFIG
+        if not 'state_dict' in checkpoint:
+            result = (PROMPT_GPT_CONFIG, PROMPT_LEGACY_TOKENIZER, checkpoint)
+
+        # Self-describing checkpoint: architecture stored in the file
+        else:
+            if not checkpoint.get('pyrasp_format') in PROMPT_MODEL_FORMATS:
+                raise ValueError(f"unsupported prompt model format {checkpoint.get('pyrasp_format')}")
+            if checkpoint.get('arch') != PROMPT_MODEL_ARCH:
+                raise ValueError(f"unsupported prompt model architecture {checkpoint.get('arch')}")
+            result = (checkpoint['config'], checkpoint['tokenizer'], checkpoint['state_dict'])
+
+        return result
 
     def register_security_checks(self, app):
         pass
@@ -1823,12 +1841,13 @@ class PyRASP():
             # Get request values
             for injection in vectors[vector_type]:
 
-                injection_ids = self.gpt2_tokenizer.encode(str(injection))
+                # Special tokens text (e.g. '<|endoftext|>') is encoded as plain text instead of raising ValueError
+                injection_ids = self.prompt_tokenizer.encode(str(injection), disallowed_special=())
                 max_length = self.prompt_model.pos_emb.weight.shape[0]
         
                 injection_ids = injection_ids[:max_length]
 
-                pad_token_id = PROMPT_GPT_CONFIG['pad_id']
+                pad_token_id = self.prompt_pad_id
                 injection_ids += [pad_token_id] * (max_length - len(injection_ids))
                 injection_tensor = torch.tensor(injection_ids).unsqueeze(0)
                 

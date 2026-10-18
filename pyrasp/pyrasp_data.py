@@ -2,10 +2,10 @@
 # VERSION
 #
 
-DATA_VERSION = '0.10.0'
-XSS_MODEL_VERSION = '3.1.0'
-SQLI_MODEL_VERSION = '3.1.1'
-PROMPT_MODEL_VERSION = '1.0.0'
+DATA_VERSION = '0.10.1'
+XSS_MODEL_VERSION = '3.2.0'
+SQLI_MODEL_VERSION = '3.2.0'
+PROMPT_MODEL_VERSION = '1.1.0'
 
 #
 # PLATFORMS
@@ -258,8 +258,8 @@ DEFAULT_CONFIG = {
 
     'EXCEPTIONS' : [],
 
-    'XSS_PROBA' : 0.9,
-    'SQLI_PROBA' : 0.9,
+    'XSS_PROBA' : 0.8,
+    'SQLI_PROBA' : 0.7,
 
     'DLP_PHONE_NUMBERS': False,
     'DLP_CC_NUMBERS': False,
@@ -470,6 +470,16 @@ CONFIG_TEMPLATES = {
 # LLM 
 #
 
+# Prompt injection model file: a self-describing checkpoint (dict saved with torch.save) built by PyRASP Central
+#   {'pyrasp_format': 1, 'arch': 'gpt-cls', 'tokenizer': 'gpt2',
+#    'config': {'vocab_size', 'qkv_bias', 'context_length', 'emb_dim', 'n_layers', 'n_heads', 'drop_rate', 'pad_id'},
+#    'state_dict': {...}}
+# The architecture comes from 'config': any embedding size, number of layers or heads loads with no change here.
+PROMPT_MODEL_FORMATS = (1,)
+PROMPT_MODEL_ARCH = 'gpt-cls'
+
+# Legacy prompt models (bare state_dict, up to 1.0.0) carry no configuration: they load with these fixed values
+PROMPT_LEGACY_TOKENIZER = 'gpt2'
 PROMPT_GPT_CONFIG = {
     'vocab_size': 50257,
     'qkv_bias': True,
