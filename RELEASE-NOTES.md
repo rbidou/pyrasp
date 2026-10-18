@@ -2,7 +2,7 @@
 
 ## Improvements
 - Improved machine learning engines accuracy (XSS and SQL Injection)
-- IMPORTANT: default `XSS_PROBA` set to `0.8`, default `SQL_PROBA` set to `0.7`
+- IMPORTANT: default `XSS_PROBA` set to `0.8`, default `SQLI_PROBA` set to `0.7`
 - Improved SQL Injection machine learning engine speed (30%)
 - Improved Prompt Injection LLM engine efficiency
 
